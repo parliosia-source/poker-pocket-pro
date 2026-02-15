@@ -31,7 +31,11 @@ export function getNextStreet(street: Street): Street | null {
 
 export function getBoardCardsForStreet(state: GameState, street: Street): string[] | undefined {
   switch (street) {
-    case "flop": return state.board.flop ?? undefined;
+    case "flop": {
+      const flop = state.board.flop;
+      const filled = flop.filter((c): c is string => c !== null);
+      return filled.length > 0 ? filled : undefined;
+    }
     case "turn": return state.board.turn ? [state.board.turn] : undefined;
     case "river": return state.board.river ? [state.board.river] : undefined;
     default: return undefined;
@@ -39,7 +43,7 @@ export function getBoardCardsForStreet(state: GameState, street: Street): string
 }
 
 export function reconstructBoard(originalState: GameState, upToStreet: Street): GameState["board"] {
-  const board: GameState["board"] = { flop: null, turn: null, river: null };
+  const board: GameState["board"] = { flop: [null, null, null], turn: null, river: null };
   if (upToStreet === "preflop") return board;
   board.flop = originalState.board.flop;
   if (upToStreet === "flop") return board;

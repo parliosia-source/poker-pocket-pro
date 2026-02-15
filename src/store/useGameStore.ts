@@ -29,6 +29,7 @@ interface GameStore {
   redo: () => void;
   setHeroCards: (cards: [string, string]) => void;
   setBoard: (street: Street, cards: string[]) => void;
+  setBoardCard: (card: string) => void;
   clearError: () => void;
 
   // Selectors
@@ -137,12 +138,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (!gameState) return;
 
     const newBoard = { ...gameState.board };
-    if (street === "flop" && cards.length === 3) {
-      newBoard.flop = cards as [string, string, string];
+    if (street === "flop") {
+      const newFlop: [string | null, string | null, string | null] = [...newBoard.flop];
+      cards.forEach((c, i) => { if (i < 3) newFlop[i] = c; });
+      newBoard.flop = newFlop;
     } else if (street === "turn" && cards.length >= 1) {
       newBoard.turn = cards[0];
     } else if (street === "river" && cards.length >= 1) {
       newBoard.river = cards[0];
+    }
+
+    set({ gameState: { ...gameState, board: newBoard } });
+  },
+
+  setBoardCard: (card: string) => {
+    const { gameState } = get();
+    if (!gameState) return;
+
+    const newBoard = { ...gameState.board };
+    const flop = [...newBoard.flop] as [string | null, string | null, string | null];
+
+    // Fill first empty flop slot, then turn, then river
+    const emptyFlopIdx = flop.findIndex(c => c === null);
+    if (emptyFlopIdx !== -1) {
+      flop[emptyFlopIdx] = card;
+      newBoard.flop = flop;
+    } else if (newBoard.turn === null) {
+      newBoard.turn = card;
+    } else if (newBoard.river === null) {
+      newBoard.river = card;
+    } else {
+      return; // Board full
     }
 
     set({ gameState: { ...gameState, board: newBoard } });

@@ -195,8 +195,14 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker }: ActionBarProps) => {
     gameState.hand_status !== 'in_progress' ||
     (gameState.current_street === 'river' && gameState.street_state.is_closed);
 
+  const streetOrder: Record<string, string> = {
+    preflop: 'FLOP',
+    flop: 'TURN',
+    turn: 'RIVER',
+  };
+  const nextStreetLabel = streetOrder[gameState.current_street] ?? 'Next';
+
   const handleNextStreet = () => {
-    // Advance first (no board cards yet), then open picker
     advanceStreet();
     onOpenCardPicker('board');
   };
@@ -262,9 +268,9 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker }: ActionBarProps) => {
         {showNextStreet && (
           <button
             onClick={handleNextStreet}
-            className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-medium min-h-[44px] flex items-center gap-1 active:scale-95"
+            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-semibold min-h-[44px] flex items-center gap-1.5 active:scale-95"
           >
-            <ChevronRight className="h-3 w-3" /> Next
+            {nextStreetLabel} <ChevronRight className="h-4 w-4" />
           </button>
         )}
         {showEndHand && (

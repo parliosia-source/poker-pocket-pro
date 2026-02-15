@@ -78,7 +78,7 @@ export function createInitialState(config: GameConfig, handNumber = 1): GameStat
     derived: {} as Derived,
     expected_actor,
     hand_status: "in_progress",
-    board: { flop: null, turn: null, river: null },
+    board: { flop: [null, null, null], turn: null, river: null },
     hero_cards: null,
     hand_number: handNumber,
   };
@@ -409,7 +409,7 @@ export function advanceStreet(state: GameState, newStreet: Street, boardCards?: 
   // Board cards
   if (boardCards) {
     if (newStreet === "flop" && boardCards.length === 3) {
-      next.board.flop = boardCards as [string, string, string];
+      next.board.flop = [boardCards[0], boardCards[1], boardCards[2]];
     } else if (newStreet === "turn" && boardCards.length >= 1) {
       next.board.turn = boardCards[0];
     } else if (newStreet === "river" && boardCards.length >= 1) {
