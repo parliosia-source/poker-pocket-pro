@@ -57,6 +57,14 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        poker: {
+          green: "hsl(var(--poker-green))",
+          red: "hsl(var(--poker-red))",
+          gold: "hsl(var(--poker-gold))",
+        },
+      },
+      fontFamily: {
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       borderRadius: {
         lg: "var(--radius)",
