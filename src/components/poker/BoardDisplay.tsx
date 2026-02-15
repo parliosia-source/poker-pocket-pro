@@ -1,4 +1,4 @@
-import { MOCK_BOARD } from '@/mock/mockHand';
+import { useGameStore } from '@/store/useGameStore';
 import CardDisplay from './CardDisplay';
 
 interface BoardDisplayProps {
@@ -6,9 +6,11 @@ interface BoardDisplayProps {
 }
 
 const BoardDisplay = ({ onTap }: BoardDisplayProps) => {
-  const flopCards = MOCK_BOARD.slice(0, 3);
-  const turnCard = MOCK_BOARD[3];
-  const riverCard = MOCK_BOARD[4];
+  const board = useGameStore((s) => s.gameState?.board);
+
+  const flopCards = board?.flop ?? [null, null, null];
+  const turnCard = board?.turn ?? null;
+  const riverCard = board?.river ?? null;
 
   return (
     <div className="flex-1">

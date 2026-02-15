@@ -19,6 +19,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/session/new" replace />} />
           <Route path="/session/new" element={<SessionSetup />} />
+          <Route path="/session/live" element={<HandLive />} />
           <Route path="/session/:id" element={<HandLive />} />
           <Route path="/session/:id/history" element={<HandHistory />} />
           <Route path="*" element={<NotFound />} />

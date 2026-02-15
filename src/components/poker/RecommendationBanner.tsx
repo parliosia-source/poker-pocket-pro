@@ -1,21 +1,18 @@
-import { MOCK_RECO } from '@/mock/mockHand';
+import { useGameStore } from '@/store/useGameStore';
 import { cn } from '@/lib/utils';
-import { CheckCircle } from 'lucide-react';
-
-const colorMap = {
-  high: 'bg-poker-green/15 border-poker-green/30 text-poker-green',
-  medium: 'bg-poker-gold/15 border-poker-gold/30 text-poker-gold',
-  low: 'bg-poker-red/15 border-poker-red/30 text-poker-red',
-};
+import { MinusCircle } from 'lucide-react';
 
 const RecommendationBanner = () => {
-  const r = MOCK_RECO;
+  const gameState = useGameStore((s) => s.gameState);
 
+  if (!gameState) return null;
+
+  // Phase 2: no reco engine, show placeholder
   return (
-    <div className={cn('rounded-lg border px-3 py-2 flex items-center gap-2', colorMap[r.confidence])}>
-      <CheckCircle className="h-4 w-4 shrink-0" />
+    <div className={cn('rounded-lg border px-3 py-2 flex items-center gap-2 bg-secondary/50 border-border text-muted-foreground')}>
+      <MinusCircle className="h-4 w-4 shrink-0" />
       <p className="text-sm font-medium">
-        {r.action} <span className="font-normal opacity-80">— {r.reasoning}</span>
+        Reco <span className="font-normal opacity-80">— disponible en Phase 3 (equity + Monte Carlo)</span>
       </p>
     </div>
   );

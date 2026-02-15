@@ -1,16 +1,19 @@
-import { MOCK_METRICS } from '@/mock/mockHand';
+import { useGameStore } from '@/store/useGameStore';
 import { cn } from '@/lib/utils';
 
-const metrics = [
-  { label: 'Pot', value: `${MOCK_METRICS.pot}`, unit: 'BB', color: 'text-foreground' },
-  { label: 'À payer', value: `${MOCK_METRICS.toCall}`, unit: 'BB', color: 'text-poker-gold' },
-  { label: 'Pot Odds', value: `${MOCK_METRICS.potOdds}`, unit: '%', color: 'text-foreground' },
-  { label: 'SPR', value: `${MOCK_METRICS.spr}`, unit: '', color: 'text-foreground' },
-  { label: 'Equity', value: `${MOCK_METRICS.equity}`, unit: '%', color: 'text-poker-green' },
-  { label: 'EV', value: `+${MOCK_METRICS.ev}`, unit: 'BB', color: 'text-poker-green' },
-];
-
 const AnalysisDashboard = () => {
+  const gameState = useGameStore((s) => s.gameState);
+  const d = gameState?.derived;
+
+  const metrics = [
+    { label: 'Pot', value: d ? `${d.pot_bb}` : '—', unit: 'BB', color: 'text-foreground' },
+    { label: 'À payer', value: d ? `${d.to_call_bb}` : '—', unit: 'BB', color: 'text-poker-gold' },
+    { label: 'Pot Odds', value: d?.pot_odds_pct != null ? `${d.pot_odds_pct}` : '—', unit: '%', color: 'text-foreground' },
+    { label: 'SPR', value: d?.spr != null ? `${d.spr}` : '—', unit: '', color: 'text-foreground' },
+    { label: 'Equity', value: '—', unit: '%', color: 'text-poker-green' },
+    { label: 'EV', value: '—', unit: 'BB', color: 'text-poker-green' },
+  ];
+
   return (
     <div className="grid grid-cols-3 gap-2">
       {metrics.map((m) => (
@@ -18,7 +21,7 @@ const AnalysisDashboard = () => {
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">{m.label}</p>
           <p className={cn('font-mono font-bold text-sm', m.color)}>
             {m.value}
-            {m.unit && <span className="text-[10px] text-muted-foreground ml-0.5">{m.unit}</span>}
+            {m.unit && m.value !== '—' && <span className="text-[10px] text-muted-foreground ml-0.5">{m.unit}</span>}
           </p>
         </div>
       ))}

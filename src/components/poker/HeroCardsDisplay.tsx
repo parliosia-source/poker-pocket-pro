@@ -1,4 +1,4 @@
-import { MOCK_HERO_CARDS } from '@/mock/mockHand';
+import { useGameStore } from '@/store/useGameStore';
 import CardDisplay from './CardDisplay';
 
 interface HeroCardsDisplayProps {
@@ -6,11 +6,15 @@ interface HeroCardsDisplayProps {
 }
 
 const HeroCardsDisplay = ({ onTap }: HeroCardsDisplayProps) => {
+  const heroCards = useGameStore((s) => s.gameState?.hero_cards);
+
+  const cards = heroCards ?? [null, null];
+
   return (
     <div>
       <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Hero</p>
       <div className="flex items-center gap-1">
-        {MOCK_HERO_CARDS.map((c, i) => (
+        {cards.map((c, i) => (
           <CardDisplay key={i} card={c} size="lg" onClick={onTap} />
         ))}
       </div>
