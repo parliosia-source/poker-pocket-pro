@@ -31,16 +31,19 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
     if (gameState.board.river) usedCards.add(gameState.board.river);
   }
 
-  // How many cards to pick
-  const getRequiredCount = (): number => {
-    if (target === 'hero') return 2;
-    if (!gameState) return 3;
-    const street = gameState.current_street;
-    if (street === 'flop') return 3;
-    return 1; // turn or river
+  // Determine which board street to target based on what's empty
+  const getBoardTarget = (): { street: Street; count: number } => {
+    if (!gameState) return { street: 'flop', count: 3 };
+    if (!gameState.board.flop) return { street: 'flop', count: 3 };
+    if (!gameState.board.turn) return { street: 'turn', count: 1 };
+    if (!gameState.board.river) return { street: 'river', count: 1 };
+    return { street: 'flop', count: 3 }; // all filled, re-select flop
   };
 
-  const requiredCount = getRequiredCount();
+  const boardTarget = target === 'board' ? getBoardTarget() : null;
+
+  // How many cards to pick
+  const requiredCount = target === 'hero' ? 2 : (boardTarget?.count ?? 3);
 
   const handleCardClick = useCallback((card: string) => {
     setSelected((prev) => {
@@ -53,8 +56,10 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
         setTimeout(() => {
           if (target === 'hero') {
             setHeroCards(next as [string, string]);
-          } else if (gameState) {
-            setBoard(gameState.current_street, next);
+          } else {
+            // Use the board target street, not current_street
+            const bt = getBoardTarget();
+            setBoard(bt.street, next);
           }
           setSelected([]);
           onOpenChange(false);
@@ -62,19 +67,22 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
       }
       return next;
     });
-  }, [requiredCount, target, gameState, setHeroCards, setBoard, onOpenChange]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requiredCount, target, gameState?.board, setHeroCards, setBoard, onOpenChange]);
 
   const handleOpenChange = (open: boolean) => {
     if (!open) setSelected([]);
     onOpenChange(open);
   };
 
+  const streetLabel = target === 'hero' ? 'Hero' : `Board (${boardTarget?.street ?? ''})`;
+
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-sm">
-            Sélectionner {requiredCount} carte{requiredCount > 1 ? 's' : ''} — {target === 'hero' ? 'Hero' : `Board (${gameState?.current_street ?? ''})`}
+            Sélectionner {requiredCount} carte{requiredCount > 1 ? 's' : ''} — {streetLabel}
           </DrawerTitle>
         </DrawerHeader>
         <div className="px-3 pb-6 overflow-y-auto">

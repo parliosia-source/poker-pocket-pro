@@ -316,7 +316,16 @@ function resolveNextActor(state: GameState, lastAction: Action): void {
       break;
 
     case "call":
-      // A call always closes the street
+      // Preflop SB limp: BB still has option (first voluntary action on this street)
+      if (
+        state.current_street === "preflop" &&
+        state.street_state.num_actions === 1 &&
+        lastAction.actor === getSBPlayer(state)
+      ) {
+        state.expected_actor = opponent;
+        break;
+      }
+      // Otherwise, a call always closes the street
       state.street_state.is_closed = true;
       // Check if both all-in after call
       if (actorState.is_all_in && opponentState.is_all_in) {

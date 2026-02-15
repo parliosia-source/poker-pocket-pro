@@ -2,9 +2,17 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useGameStore } from '@/store/useGameStore';
 
 const SessionResumeCard = () => {
   const navigate = useNavigate();
+  const gameState = useGameStore((s) => s.gameState);
+
+  if (!gameState) return null;
+
+  const handNumber = gameState.hand_number;
+  const position = gameState.config.hero_position === 'SB' ? 'BTN' : 'BB';
+  const stack = gameState.hero.stack_remaining_bb;
 
   return (
     <Card className="border-primary/30 bg-primary/5">
@@ -12,10 +20,10 @@ const SessionResumeCard = () => {
         <div className="flex-1 min-w-0">
           <p className="text-xs text-primary font-medium mb-0.5">Session active</p>
           <p className="text-sm text-foreground">
-            Main #3 · BTN · <span className="font-mono">98.5 BB</span>
+            Main #{handNumber} · {position} · <span className="font-mono">{stack} BB</span>
           </p>
         </div>
-        <Button size="sm" onClick={() => navigate('/session/demo')} className="min-h-[44px] min-w-[44px]">
+        <Button size="sm" onClick={() => navigate('/session/live')} className="min-h-[44px] min-w-[44px]">
           <Play className="h-4 w-4" />
           Reprendre
         </Button>
