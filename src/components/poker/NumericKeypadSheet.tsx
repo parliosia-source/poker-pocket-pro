@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import { Delete } from 'lucide-react';
+import { useGameStore } from '@/store/useGameStore';
 
 interface NumericKeypadSheetProps {
   open: boolean;
@@ -12,6 +13,8 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'DEL'];
 
 const NumericKeypadSheet = ({ open, onOpenChange }: NumericKeypadSheetProps) => {
   const [value, setValue] = useState('');
+  const gameState = useGameStore((s) => s.gameState);
+  const dispatchAction = useGameStore((s) => s.dispatchAction);
 
   const handleKey = (key: string) => {
     if (key === 'DEL') {
@@ -24,21 +27,44 @@ const NumericKeypadSheet = ({ open, onOpenChange }: NumericKeypadSheetProps) => 
   };
 
   const handleConfirm = () => {
+    const amount = parseFloat(value);
+    if (!isNaN(amount) && amount > 0 && gameState) {
+      const toCall = gameState.derived.to_call_bb;
+      if (toCall === 0) {
+        dispatchAction('bet', amount);
+      } else {
+        dispatchAction('raise_to', amount);
+      }
+    }
     setValue('');
     onOpenChange(false);
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) setValue('');
+    onOpenChange(open);
+  };
+
+  // Pre-fill hint
+  const placeholder = gameState
+    ? gameState.derived.to_call_bb === 0
+      ? gameState.config.bb_bb
+      : gameState.derived.min_raise_to_bb ?? gameState.config.bb_bb
+    : 0;
+
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent>
         <DrawerHeader className="pb-2">
-          <DrawerTitle className="text-sm">Montant (BB)</DrawerTitle>
+          <DrawerTitle className="text-sm">
+            {gameState?.derived.to_call_bb === 0 ? 'Bet' : 'Raise to'} (BB) — min {placeholder}
+          </DrawerTitle>
         </DrawerHeader>
         <div className="px-4 pb-6 space-y-3">
           {/* Display */}
           <div className="bg-card border border-border rounded-lg py-3 px-4 text-center">
             <span className="font-mono text-2xl font-bold text-foreground">
-              {value || '0'}
+              {value || String(placeholder)}
             </span>
             <span className="text-sm text-muted-foreground ml-1">BB</span>
           </div>
