@@ -40,32 +40,31 @@ const ActorIndicator = () => {
   );
 };
 
-const ActionButtons = () => {
+const ActionButtons = ({ onOpenKeypad }: { onOpenKeypad: () => void }) => {
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
   const getAvailableActions = useGameStore((s) => s.getAvailableActions);
-  const getSizingOptions = useGameStore((s) => s.getSizingOptions);
 
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
 
   const available = getAvailableActions();
   const toCall = gameState.derived.to_call_bb;
-  const sizing = getSizingOptions();
 
-  const buttons: { label: string; type: ActionType; style: string; amount?: number }[] = [];
+  const buttons: { label: string; type: ActionType | 'open_bet'; style: string; amount?: number }[] = [];
 
   if (toCall === 0) {
-    // Check mode
     if (available.includes('check')) {
       buttons.push({ label: 'Check', type: 'check', style: 'bg-secondary text-secondary-foreground' });
     }
+    if (available.includes('bet')) {
+      buttons.push({ label: 'Bet', type: 'open_bet', style: 'bg-poker-green/20 text-poker-green' });
+    }
   } else {
-    // Facing bet/raise
     if (available.includes('fold')) {
       buttons.push({ label: 'Fold', type: 'fold', style: 'bg-poker-red/20 text-poker-red' });
     }
     if (available.includes('call')) {
-      const callLabel = toCall >= (gameState ? gameState[gameState.expected_actor].stack_remaining_bb : 0)
+      const callLabel = toCall >= gameState[gameState.expected_actor].stack_remaining_bb
         ? `Call All-in`
         : `Call ${toCall}`;
       buttons.push({ label: callLabel, type: 'call', style: 'bg-poker-green/20 text-poker-green' });
@@ -77,7 +76,13 @@ const ActionButtons = () => {
       {buttons.map((a) => (
         <button
           key={a.label}
-          onClick={() => dispatchAction(a.type, a.amount)}
+          onClick={() => {
+            if (a.type === 'open_bet') {
+              onOpenKeypad();
+            } else {
+              dispatchAction(a.type as ActionType, a.amount);
+            }
+          }}
           className={cn('flex-1 py-2 rounded-md text-xs font-medium transition-colors min-h-[44px] active:scale-95', a.style)}
         >
           {a.label}
@@ -254,7 +259,7 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker }: ActionBarProps) => {
 
       {/* Row 2: Action buttons */}
       <div className="mb-2">
-        <ActionButtons />
+        <ActionButtons onOpenKeypad={onOpenKeypad} />
       </div>
 
       {/* Row 3: Quick sizing */}
