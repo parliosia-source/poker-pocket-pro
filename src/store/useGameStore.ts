@@ -155,20 +155,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const { gameState } = get();
     if (!gameState) return;
 
+    const street = gameState.current_street;
     const newBoard = { ...gameState.board };
-    const flop = [...newBoard.flop] as [string | null, string | null, string | null];
 
-    // Fill first empty flop slot, then turn, then river
-    const emptyFlopIdx = flop.findIndex(c => c === null);
-    if (emptyFlopIdx !== -1) {
-      flop[emptyFlopIdx] = card;
+    if (street === "preflop" || street === "flop") {
+      // Only fill flop slots
+      const flop = [...newBoard.flop] as [string | null, string | null, string | null];
+      const emptyIdx = flop.findIndex(c => c === null);
+      if (emptyIdx === -1) return; // Flop already complete
+      flop[emptyIdx] = card;
       newBoard.flop = flop;
-    } else if (newBoard.turn === null) {
+    } else if (street === "turn") {
+      if (newBoard.turn !== null) return; // Turn already set
       newBoard.turn = card;
-    } else if (newBoard.river === null) {
+    } else if (street === "river") {
+      if (newBoard.river !== null) return; // River already set
       newBoard.river = card;
-    } else {
-      return; // Board full
     }
 
     set({ gameState: { ...gameState, board: newBoard } });

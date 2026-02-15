@@ -3,7 +3,6 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/u
 import { CARD_RANKS, CARD_SUITS, SUIT_SYMBOLS } from '@/mock/mockHand';
 import { useGameStore } from '@/store/useGameStore';
 import { cn } from '@/lib/utils';
-import type { Street } from '@/engine/types';
 
 interface CardPickerSheetProps {
   open: boolean;
@@ -29,24 +28,54 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
     if (gameState.board.river) usedCards.add(gameState.board.river);
   }
 
-  // Board: count empty slots to show label
-  const getBoardLabel = (): string => {
-    if (!gameState) return 'Board';
-    const emptyFlop = gameState.board.flop.filter(c => c === null).length;
-    if (emptyFlop > 0) return `Flop (${3 - emptyFlop}/3)`;
-    if (!gameState.board.turn) return 'Turn';
-    if (!gameState.board.river) return 'River';
-    return 'Board (complet)';
+  // Street-scoped: how many slots remain for the current street
+  const getStreetSlotsRemaining = (): number => {
+    if (!gameState) return 0;
+    const street = gameState.current_street;
+    if (street === 'preflop' || street === 'flop') {
+      return gameState.board.flop.filter(c => c === null).length;
+    }
+    if (street === 'turn') return gameState.board.turn === null ? 1 : 0;
+    if (street === 'river') return gameState.board.river === null ? 1 : 0;
+    return 0;
   };
 
-  const isBoardFull = gameState
-    ? gameState.board.flop.every(c => c !== null) && gameState.board.turn !== null && gameState.board.river !== null
-    : false;
+  const slotsRemaining = getStreetSlotsRemaining();
+  const isStreetComplete = target === 'board' && slotsRemaining === 0;
+
+  // Board label scoped to current street
+  const getBoardLabel = (): string => {
+    if (!gameState) return 'Board';
+    const street = gameState.current_street;
+    if (street === 'preflop' || street === 'flop') {
+      const filled = 3 - gameState.board.flop.filter(c => c === null).length;
+      return `Flop (${filled}/3)`;
+    }
+    if (street === 'turn') return 'Turn';
+    if (street === 'river') return 'River';
+    return 'Board';
+  };
 
   const handleCardClick = useCallback((card: string) => {
     if (target === 'board') {
-      // Commit immediately to store, one card at a time
       setBoardCard(card);
+      // Auto-close: after committing, check if street will be complete
+      // slotsRemaining was computed before this click, so 1 means this was the last slot
+      const currentState = useGameStore.getState().gameState;
+      if (currentState) {
+        const street = currentState.current_street;
+        let complete = false;
+        if (street === 'preflop' || street === 'flop') {
+          complete = currentState.board.flop.filter(c => c === null).length === 0;
+        } else if (street === 'turn') {
+          complete = currentState.board.turn !== null;
+        } else if (street === 'river') {
+          complete = currentState.board.river !== null;
+        }
+        if (complete) {
+          setTimeout(() => onOpenChange(false), 150);
+        }
+      }
     } else {
       // Hero: need exactly 2 cards
       setHeroSelected((prev) => {
@@ -72,7 +101,6 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
   };
 
   const streetLabel = target === 'hero' ? 'Hero' : getBoardLabel();
-  const requiredCount = target === 'hero' ? 2 : 1;
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
@@ -107,15 +135,16 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
                   const used = usedCards.has(card);
                   const isSelected = target === 'hero' ? heroSelected.includes(card) : false;
                   const isRed = suit === 'h' || suit === 'd';
+                  const disabled = used || (target === 'board' && isStreetComplete);
 
                   return (
                     <button
                       key={card}
-                      disabled={used}
+                      disabled={disabled}
                       onClick={() => handleCardClick(card)}
                       className={cn(
                         'rounded-md border font-mono text-xs font-bold py-2.5 transition-all min-h-[44px]',
-                        used
+                        disabled
                           ? 'opacity-20 cursor-not-allowed bg-muted border-border'
                           : isSelected
                             ? 'bg-primary text-primary-foreground border-primary scale-95'
