@@ -17,7 +17,7 @@ export function undoAction(state: GameState): { newState: GameState; undoneActio
   // Fresh state
   let current = createInitialState(state.config, state.hand_number);
   current.hero_cards = state.hero_cards;
-  current.board = { flop: null, turn: null, river: null };
+  current.board = { flop: [null, null, null], turn: null, river: null };
 
   // Replay
   for (const action of actionsToReplay) {

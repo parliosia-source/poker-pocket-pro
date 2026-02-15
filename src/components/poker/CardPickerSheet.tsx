@@ -14,9 +14,9 @@ interface CardPickerSheetProps {
 const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) => {
   const gameState = useGameStore((s) => s.gameState);
   const setHeroCards = useGameStore((s) => s.setHeroCards);
-  const setBoard = useGameStore((s) => s.setBoard);
+  const setBoardCard = useGameStore((s) => s.setBoardCard);
 
-  const [selected, setSelected] = useState<string[]>([]);
+  const [heroSelected, setHeroSelected] = useState<string[]>([]);
 
   // Compute used cards from current state
   const usedCards = new Set<string>();
@@ -24,65 +24,62 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
     if (gameState.hero_cards) {
       gameState.hero_cards.forEach(c => usedCards.add(c));
     }
-    if (gameState.board.flop) {
-      gameState.board.flop.forEach(c => usedCards.add(c));
-    }
+    gameState.board.flop.forEach(c => { if (c) usedCards.add(c); });
     if (gameState.board.turn) usedCards.add(gameState.board.turn);
     if (gameState.board.river) usedCards.add(gameState.board.river);
   }
 
-  // Determine which board street to target based on what's empty
-  const getBoardTarget = (): { street: Street; count: number } => {
-    if (!gameState) return { street: 'flop', count: 3 };
-    if (!gameState.board.flop) return { street: 'flop', count: 3 };
-    if (!gameState.board.turn) return { street: 'turn', count: 1 };
-    if (!gameState.board.river) return { street: 'river', count: 1 };
-    return { street: 'flop', count: 3 }; // all filled, re-select flop
+  // Board: count empty slots to show label
+  const getBoardLabel = (): string => {
+    if (!gameState) return 'Board';
+    const emptyFlop = gameState.board.flop.filter(c => c === null).length;
+    if (emptyFlop > 0) return `Flop (${3 - emptyFlop}/3)`;
+    if (!gameState.board.turn) return 'Turn';
+    if (!gameState.board.river) return 'River';
+    return 'Board (complet)';
   };
 
-  const boardTarget = target === 'board' ? getBoardTarget() : null;
-
-  // How many cards to pick
-  const requiredCount = target === 'hero' ? 2 : (boardTarget?.count ?? 3);
+  const isBoardFull = gameState
+    ? gameState.board.flop.every(c => c !== null) && gameState.board.turn !== null && gameState.board.river !== null
+    : false;
 
   const handleCardClick = useCallback((card: string) => {
-    setSelected((prev) => {
-      if (prev.includes(card)) {
-        return prev.filter(c => c !== card);
-      }
-      const next = [...prev, card];
-      if (next.length >= requiredCount) {
-        // Submit
-        setTimeout(() => {
-          if (target === 'hero') {
+    if (target === 'board') {
+      // Commit immediately to store, one card at a time
+      setBoardCard(card);
+    } else {
+      // Hero: need exactly 2 cards
+      setHeroSelected((prev) => {
+        if (prev.includes(card)) {
+          return prev.filter(c => c !== card);
+        }
+        const next = [...prev, card];
+        if (next.length >= 2) {
+          setTimeout(() => {
             setHeroCards(next as [string, string]);
-          } else {
-            // Use the board target street, not current_street
-            const bt = getBoardTarget();
-            setBoard(bt.street, next);
-          }
-          setSelected([]);
-          onOpenChange(false);
-        }, 100);
-      }
-      return next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requiredCount, target, gameState?.board, setHeroCards, setBoard, onOpenChange]);
+            setHeroSelected([]);
+            onOpenChange(false);
+          }, 100);
+        }
+        return next;
+      });
+    }
+  }, [target, setBoardCard, setHeroCards, onOpenChange]);
 
   const handleOpenChange = (open: boolean) => {
-    if (!open) setSelected([]);
+    if (!open) setHeroSelected([]);
     onOpenChange(open);
   };
 
-  const streetLabel = target === 'hero' ? 'Hero' : `Board (${boardTarget?.street ?? ''})`;
+  const streetLabel = target === 'hero' ? 'Hero' : getBoardLabel();
+  const requiredCount = target === 'hero' ? 2 : 1;
 
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="max-h-[85dvh]">
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-sm">
-            Sélectionner {requiredCount} carte{requiredCount > 1 ? 's' : ''} — {streetLabel}
+            {target === 'hero' ? 'Sélectionner 2 cartes — Hero' : `Tap pour ajouter — ${streetLabel}`}
           </DrawerTitle>
         </DrawerHeader>
         <div className="px-3 pb-6 overflow-y-auto">
@@ -108,7 +105,7 @@ const CardPickerSheet = ({ open, onOpenChange, target }: CardPickerSheetProps) =
                 {CARD_SUITS.map((suit) => {
                   const card = `${rank}${suit}`;
                   const used = usedCards.has(card);
-                  const isSelected = selected.includes(card);
+                  const isSelected = target === 'hero' ? heroSelected.includes(card) : false;
                   const isRed = suit === 'h' || suit === 'd';
 
                   return (

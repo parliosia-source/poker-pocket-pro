@@ -74,7 +74,7 @@ export interface GameConfig {
 }
 
 export interface Board {
-  flop: [string, string, string] | null;
+  flop: [string | null, string | null, string | null];
   turn: string | null;
   river: string | null;
 }

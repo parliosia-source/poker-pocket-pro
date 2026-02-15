@@ -8,7 +8,7 @@ interface BoardDisplayProps {
 const BoardDisplay = ({ onTap }: BoardDisplayProps) => {
   const board = useGameStore((s) => s.gameState?.board);
 
-  const flopCards = board?.flop ?? [null, null, null];
+  const flopCards = board?.flop ?? [null, null, null] as const;
   const turnCard = board?.turn ?? null;
   const riverCard = board?.river ?? null;
 
