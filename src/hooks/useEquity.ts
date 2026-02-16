@@ -4,7 +4,13 @@ import { LRUCache, makeEquityKey } from '@/engine/lruCache';
 import type { WorkerRequest, WorkerResponse } from '@/workers/equityWorker';
 import type { MonteCarloResult } from '@/engine/handEvaluator';
 
-const DEFAULT_ITERATIONS = 3000;
+/** Scale iterations down for multiway to keep computation fast */
+function getIterations(opponentCount: number): number {
+  if (opponentCount <= 1) return 3000;
+  if (opponentCount <= 2) return 1500;
+  if (opponentCount <= 4) return 800;
+  return 500; // 5+ opponents — 6 hands × 500 = 63k eval calls
+}
 const DEFAULT_SEED = 42;
 
 const cache = new LRUCache<MonteCarloResult>(500);
@@ -71,7 +77,8 @@ export function useEquity(): EquityState {
       // Cache
       if (gs?.hero_cards) {
         const boardCards = getBoardCards(gs.board);
-        const key = makeEquityKey(gs.hero_cards, boardCards, DEFAULT_ITERATIONS, oc);
+        const iters = getIterations(oc);
+        const key = makeEquityKey(gs.hero_cards, boardCards, iters, oc);
         cache.set(key, result);
       }
     };
@@ -89,7 +96,8 @@ export function useEquity(): EquityState {
     }
 
     const boardCards = board ? getBoardCards(board) : [];
-    const key = makeEquityKey(heroCards, boardCards, DEFAULT_ITERATIONS, opponentCount);
+    const iters = getIterations(opponentCount);
+    const key = makeEquityKey(heroCards, boardCards, iters, opponentCount);
 
     const cached = cache.get(key);
     if (cached) {
@@ -112,7 +120,7 @@ export function useEquity(): EquityState {
       requestId: reqId,
       heroCards: [...heroCards],
       boardCards,
-      iterations: DEFAULT_ITERATIONS,
+      iterations: iters,
       seed: DEFAULT_SEED,
       opponentCount,
     };
