@@ -7,11 +7,12 @@ import { useGameStore } from '@/store/useGameStore';
 interface NumericKeypadSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  actorId?: string | null;
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'DEL'];
 
-const NumericKeypadSheet = ({ open, onOpenChange }: NumericKeypadSheetProps) => {
+const NumericKeypadSheet = ({ open, onOpenChange, actorId }: NumericKeypadSheetProps) => {
   const [value, setValue] = useState('');
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
@@ -29,11 +30,12 @@ const NumericKeypadSheet = ({ open, onOpenChange }: NumericKeypadSheetProps) => 
   const handleConfirm = () => {
     const amount = parseFloat(value);
     if (!isNaN(amount) && amount > 0 && gameState) {
+      const pid = actorId ?? gameState.expected_actor_id ?? undefined;
       const toCall = gameState.derived.to_call_bb;
       if (toCall === 0) {
-        dispatchAction('bet', amount);
+        dispatchAction('bet', amount, pid);
       } else {
-        dispatchAction('raise_to', amount);
+        dispatchAction('raise_to', amount, pid);
       }
     }
     setValue('');

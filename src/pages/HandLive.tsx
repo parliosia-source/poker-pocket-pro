@@ -42,6 +42,9 @@ const HandLive = () => {
 
   if (!gameState) return null;
 
+  // Pass current active actor to keypad for explicit player_id
+  const activeActorId = gameState.expected_actor_id;
+
   return (
     <div className="min-h-dvh bg-background flex flex-col">
       <SessionHeader />
@@ -66,7 +69,7 @@ const HandLive = () => {
       />
 
       <CardPickerSheet open={cardPickerOpen} onOpenChange={setCardPickerOpen} target={cardPickerTarget} />
-      <NumericKeypadSheet open={keypadOpen} onOpenChange={setKeypadOpen} />
+      <NumericKeypadSheet open={keypadOpen} onOpenChange={setKeypadOpen} actorId={activeActorId} />
       <ResultSheet open={resultOpen} onOpenChange={setResultOpen} onConfirm={handleResultConfirm} />
     </div>
   );
