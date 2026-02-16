@@ -5,6 +5,8 @@ import { useGameStore } from '@/store/useGameStore';
 import { useEquity } from '@/hooks/useEquity';
 import { computeReco } from '@/engine/recoEngine';
 import type { ActionType } from '@/engine/types';
+import BetSlider from './BetSlider';
+import AllInConfirmDialog from './AllInConfirmDialog';
 
 interface ActionBarProps {
   onOpenKeypad: () => void;
@@ -330,6 +332,7 @@ const ToolbarRow = ({
 
 const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps) => {
   const [betAmount, setBetAmount] = useState('');
+  const [allInConfirm, setAllInConfirm] = useState<{ amount: number } | null>(null);
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
   const error = useGameStore((s) => s.error);
@@ -345,13 +348,16 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
 
   if (!gameState) return null;
 
+  const actor = gameState[gameState.expected_actor];
+  const allInAmount = actor.invested_this_street_bb + actor.stack_remaining_bb;
+
   const handlePresetAmount = (bb: number) => {
     setBetAmount(String(bb));
   };
 
-  const handleConfirmBet = () => {
-    const amount = parseFloat(betAmount);
-    if (isNaN(amount) || amount <= 0) return;
+  const isAllIn = (amount: number) => Math.abs(amount - allInAmount) < 0.01;
+
+  const doDispatchBet = (amount: number) => {
     const toCall = gameState.derived.to_call_bb;
     if (toCall === 0) {
       dispatchAction('bet', amount);
@@ -359,6 +365,25 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
       dispatchAction('raise_to', amount);
     }
     setBetAmount('');
+  };
+
+  const handleConfirmBet = () => {
+    const amount = parseFloat(betAmount);
+    if (isNaN(amount) || amount <= 0) return;
+
+    if (isAllIn(amount)) {
+      setAllInConfirm({ amount });
+      return;
+    }
+
+    doDispatchBet(amount);
+  };
+
+  const handleAllInConfirmed = () => {
+    if (allInConfirm) {
+      doDispatchBet(allInConfirm.amount);
+    }
+    setAllInConfirm(null);
   };
 
   return (
@@ -379,6 +404,9 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
       {/* Sizing presets */}
       <SizingPresets onSelectAmount={handlePresetAmount} />
 
+      {/* Bet sizing slider */}
+      <BetSlider betAmount={betAmount} setBetAmount={setBetAmount} />
+
       {/* Bet input + confirm */}
       <BetInputRow
         betAmount={betAmount}
@@ -389,6 +417,14 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
 
       {/* Toolbar: undo/redo/board/hero/next/end */}
       <ToolbarRow onOpenCardPicker={onOpenCardPicker} onEndHand={onEndHand} />
+
+      {/* All-in confirmation */}
+      <AllInConfirmDialog
+        open={allInConfirm !== null}
+        amount={allInConfirm?.amount ?? 0}
+        onConfirm={handleAllInConfirmed}
+        onCancel={() => setAllInConfirm(null)}
+      />
     </div>
   );
 };
