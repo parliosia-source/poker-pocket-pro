@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { LRUCache, makeEquityKey } from '@/engine/lruCache';
+import { runMonteCarlo } from '@/engine/handEvaluator';
 import type { WorkerRequest, WorkerResponse } from '@/workers/equityWorker';
 import type { MonteCarloResult } from '@/engine/handEvaluator';
 
@@ -59,44 +60,55 @@ export function useEquity(): EquityState {
 
   const workerRef = useRef<Worker | null>(null);
   const requestIdRef = useRef(0);
+  const handleResultRef = useRef<(result: MonteCarloResult, reqId: string) => void>(() => {});
 
   // Initialize worker
   useEffect(() => {
-    workerRef.current = new Worker(
-      new URL('../workers/equityWorker.ts', import.meta.url),
-      { type: 'module' }
-    );
+    try {
+      workerRef.current = new Worker(
+        new URL('../workers/equityWorker.ts', import.meta.url),
+        { type: 'module' }
+      );
 
-    workerRef.current.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      const { requestId, result } = e.data;
-      if (requestId !== String(requestIdRef.current)) return;
+      workerRef.current.onmessage = (e: MessageEvent<WorkerResponse>) => {
+        const { requestId, result } = e.data;
+        handleResultRef.current(result, requestId);
+      };
 
-      const gs = useGameStore.getState().gameState;
-      const oc = gs ? Math.max(1, gs.players.filter(p => p.status === 'active' && !p.is_hero).length) : 1;
-
-      const iters = getIterations(oc);
-      setState({
-        equity: result.equity,
-        loading: false,
-        ms: result.ms,
-        iterations: result.iterations,
-        opponentCount: oc,
-        approx: result.iterations < iters,
-      });
-
-      // Cache
-      if (gs?.hero_cards) {
-        const boardCards = getBoardCards(gs.board);
-        const iters = getIterations(oc);
-        const key = makeEquityKey(gs.hero_cards, boardCards, iters, oc);
-        cache.set(key, result);
-      }
-    };
+      workerRef.current.onerror = (err) => {
+        console.warn('[useEquity] Worker error, falling back to main thread', err);
+        workerRef.current = null;
+      };
+    } catch {
+      console.warn('[useEquity] Worker init failed, will use main thread fallback');
+      workerRef.current = null;
+    }
 
     return () => {
       workerRef.current?.terminate();
     };
   }, []);
+
+  const handleResult = (result: MonteCarloResult, reqId: string) => {
+    if (reqId !== String(requestIdRef.current)) return;
+    const gs = useGameStore.getState().gameState;
+    const oc = gs ? Math.max(1, gs.players.filter(p => p.status === 'active' && !p.is_hero).length) : 1;
+    const iters = getIterations(oc);
+    setState({
+      equity: result.equity,
+      loading: false,
+      ms: result.ms,
+      iterations: result.iterations,
+      opponentCount: oc,
+      approx: result.iterations < iters,
+    });
+    if (gs?.hero_cards) {
+      const boardCards = getBoardCards(gs.board);
+      const key = makeEquityKey(gs.hero_cards, boardCards, iters, oc);
+      cache.set(key, result);
+    }
+  };
+  handleResultRef.current = handleResult;
 
   // Trigger computation when cards or opponent count change
   useEffect(() => {
@@ -137,7 +149,27 @@ export function useEquity(): EquityState {
       maxMs: getMaxMs(opponentCount),
     };
 
-    workerRef.current?.postMessage(req);
+    // If worker is available, use it; otherwise run on main thread
+    if (workerRef.current) {
+      workerRef.current.postMessage(req);
+
+      // Safety timeout: if worker doesn't respond in 3s, fallback to main thread
+      const timeout = setTimeout(() => {
+        if (String(requestIdRef.current) !== reqId) return;
+        console.warn('[useEquity] Worker timeout, running on main thread');
+        const result = runMonteCarlo({ heroCards: req.heroCards, boardCards: req.boardCards, iterations: req.iterations, seed: req.seed, opponentCount: req.opponentCount, maxMs: req.maxMs });
+        handleResult(result, reqId);
+      }, 3000);
+
+      return () => clearTimeout(timeout);
+    } else {
+      // Main thread fallback
+      setTimeout(() => {
+        if (String(requestIdRef.current) !== reqId) return;
+        const result = runMonteCarlo({ heroCards: req.heroCards, boardCards: req.boardCards, iterations: req.iterations, seed: req.seed, opponentCount: req.opponentCount, maxMs: req.maxMs });
+        handleResult(result, reqId);
+      }, 0);
+    }
   }, [heroCards?.[0], heroCards?.[1], board?.flop[0], board?.flop[1], board?.flop[2], board?.turn, board?.river, opponentCount]);
 
   return state;
