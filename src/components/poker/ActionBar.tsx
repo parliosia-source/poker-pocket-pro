@@ -196,9 +196,7 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
     gameState.current_street !== 'river' &&
     gameState.hand_status === 'in_progress';
 
-  const showEndHand =
-    gameState.hand_status !== 'in_progress' ||
-    (gameState.current_street === 'river' && gameState.street_state.is_closed);
+  const showEndHand = true; // Always allow ending a hand
 
   const streetOrder: Record<string, string> = {
     preflop: 'FLOP',
