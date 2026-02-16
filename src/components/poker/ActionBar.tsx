@@ -1,24 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { Undo2, Redo2, Square, ChevronRight, Spade, AlertTriangle } from 'lucide-react';
+import { Undo2, Redo2, Square, Spade, AlertTriangle } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { useEquity } from '@/hooks/useEquity';
+import { useFastAction } from '@/hooks/useFastAction';
 import { computeReco } from '@/engine/recoEngine';
 import { getPlayerById, findHero } from '@/engine/utils';
 import type { ActionType } from '@/engine/types';
 import BetSlider from './BetSlider';
 import AllInConfirmDialog from './AllInConfirmDialog';
+import FastActionRow from './FastActionRow';
+import VillainRaisePanel from './VillainRaisePanel';
+import StreetClosePanel from './StreetClosePanel';
+import LastActionChip from './LastActionChip';
 
 interface ActionBarProps {
   onOpenKeypad: () => void;
   onOpenCardPicker: (target: 'hero' | 'board') => void;
   onEndHand: () => void;
-}
-
-/* ─── Helper: get actor player from state ─── */
-function getExpectedActor(gameState: ReturnType<typeof useGameStore.getState>['gameState']) {
-  if (!gameState || !gameState.expected_actor_id) return null;
-  return getPlayerById(gameState, gameState.expected_actor_id) ?? null;
 }
 
 /* ─── Reco hook ─── */
@@ -34,8 +33,9 @@ function useRecoHint(): { hint: RecoHint; label: string } {
       return { hint: null, label: 'Reco : indisponible' };
     }
 
-    // Only show reco when hero is expected actor
-    const actor = getExpectedActor(gameState);
+    const actor = gameState.expected_actor_id
+      ? getPlayerById(gameState, gameState.expected_actor_id)
+      : null;
     if (!actor?.is_hero) {
       return { hint: null, label: '' };
     }
@@ -71,16 +71,19 @@ function useRecoHint(): { hint: RecoHint; label: string } {
   }, [gameState, equity]);
 }
 
-/* ─── Actor Ribbon ─── */
+/* ─── Actor Ribbon with LastActionChip ─── */
 
 const ActorRibbon = ({ overrideActorId, setOverrideActorId }: {
   overrideActorId: string | null;
   setOverrideActorId: (id: string | null) => void;
 }) => {
   const gameState = useGameStore((s) => s.gameState);
+  const fastState = useFastAction(overrideActorId);
+
   if (!gameState) return null;
 
   const expectedId = gameState.expected_actor_id;
+  const nextActorId = fastState.nextActorId;
 
   return (
     <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
@@ -88,8 +91,8 @@ const ActorRibbon = ({ overrideActorId, setOverrideActorId }: {
         const isExpected = p.id === expectedId;
         const isOverride = overrideActorId === p.id;
         const isCurrent = isOverride || (!overrideActorId && isExpected);
-        const inQueue = gameState.action_queue.players_to_act.includes(p.id);
-        const canTap = p.status === 'active' && (inQueue || p.status === 'active');
+        const isNext = p.id === nextActorId && !isCurrent;
+        const canTap = p.status === 'active';
         const isFolded = p.status === 'folded';
         const isAllIn = p.status === 'all_in';
 
@@ -105,10 +108,11 @@ const ActorRibbon = ({ overrideActorId, setOverrideActorId }: {
               }
             }}
             className={cn(
-              'flex flex-col items-center justify-center rounded-md text-[10px] font-bold transition-all min-h-[44px] min-w-[44px] px-1.5 shrink-0',
-              isCurrent && 'bg-primary text-primary-foreground ring-2 ring-ring animate-pulse',
+              'flex flex-col items-center justify-center rounded-md text-[10px] font-bold transition-all min-h-[48px] min-w-[48px] px-1.5 shrink-0',
+              isCurrent && 'bg-primary text-primary-foreground ring-2 ring-ring',
               !isCurrent && isExpected && 'bg-primary/30 text-primary',
               !isCurrent && !isExpected && canTap && 'bg-secondary text-secondary-foreground',
+              isNext && 'border border-dashed border-muted-foreground/40',
               isFolded && 'opacity-30 line-through',
               isAllIn && 'opacity-70 bg-poker-red/20 text-poker-red',
               p.is_hero && !isCurrent && 'border border-primary/50',
@@ -117,6 +121,7 @@ const ActorRibbon = ({ overrideActorId, setOverrideActorId }: {
             <span>{p.position_label}</span>
             {p.is_hero && <span className="text-[8px]">★</span>}
             {isAllIn && <span className="text-[8px]">AI</span>}
+            <LastActionChip playerId={p.id} />
           </button>
         );
       })}
@@ -135,7 +140,7 @@ const RecoStrip = ({ label }: { label: string }) => {
   );
 };
 
-/* ─── Sizing Presets Row ─── */
+/* ─── Hero Sizing Presets ─── */
 
 const SizingPresets = ({ onSelectAmount, actorId }: { onSelectAmount: (bb: number) => void; actorId: string | null }) => {
   const gameState = useGameStore((s) => s.gameState);
@@ -152,10 +157,7 @@ const SizingPresets = ({ onSelectAmount, actorId }: { onSelectAmount: (bb: numbe
   const isPreflop = gameState.current_street === 'preflop';
   const bb = gameState.config.bb_bb;
 
-  const minAmount = toCall === 0
-    ? bb
-    : (min_raise_to_bb ?? current_bet_bb + bb);
-
+  const minAmount = toCall === 0 ? bb : (min_raise_to_bb ?? current_bet_bb + bb);
   const maxAmount = actor.invested_this_street_bb + actor.stack_remaining_bb;
 
   const base = isPreflop ? bb : (toCall > 0 ? toCall : bb);
@@ -182,7 +184,7 @@ const SizingPresets = ({ onSelectAmount, actorId }: { onSelectAmount: (bb: numbe
   );
 };
 
-/* ─── Bet Input Row ─── */
+/* ─── Hero Bet Input Row ─── */
 
 const BetInputRow = ({
   betAmount,
@@ -224,18 +226,16 @@ const BetInputRow = ({
   );
 };
 
-/* ─── Main 3-Button Row ─── */
+/* ─── Hero Main 3-Button Row ─── */
 
-const MainActionRow = ({
+const HeroActionRow = ({
   recoHint,
   onOpenKeypad,
   actorId,
-  isHeroActing,
 }: {
   recoHint: RecoHint;
   onOpenKeypad: () => void;
   actorId: string | null;
-  isHeroActing: boolean;
 }) => {
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
@@ -251,7 +251,6 @@ const MainActionRow = ({
 
   const prefersReduced = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
   const pulseClass = prefersReduced ? 'ring-2 ring-ring' : 'animate-reco-pulse ring-2 ring-ring';
 
   const buttons: {
@@ -319,7 +318,7 @@ const MainActionRow = ({
             'flex-1 py-3 rounded-lg text-sm font-bold transition-colors min-h-[52px] active:scale-95',
             b.bg,
             b.textColor,
-            isHeroActing && recoHint === b.id && pulseClass,
+            recoHint === b.id && pulseClass,
           )}
         >
           {b.label}
@@ -341,7 +340,6 @@ const ToolbarRow = ({
   const gameState = useGameStore((s) => s.gameState);
   const undo = useGameStore((s) => s.undo);
   const redo = useGameStore((s) => s.redo);
-  const advanceStreetFn = useGameStore((s) => s.advanceStreet);
   const timeline = useGameStore((s) => s.timeline);
   const redoStack = useGameStore((s) => s.redoStack);
 
@@ -349,23 +347,6 @@ const ToolbarRow = ({
 
   const canUndo = timeline.length > 0;
   const canRedo = redoStack.length > 0;
-
-  const showNextStreet =
-    gameState.street_state.is_closed &&
-    gameState.current_street !== 'river' &&
-    gameState.hand_status === 'in_progress';
-
-  const streetOrder: Record<string, string> = {
-    preflop: 'FLOP',
-    flop: 'TURN',
-    turn: 'RIVER',
-  };
-  const nextStreetLabel = streetOrder[gameState.current_street] ?? 'Next';
-
-  const handleNextStreet = () => {
-    advanceStreetFn();
-    onOpenCardPicker('board');
-  };
 
   return (
     <div className="flex items-center gap-1">
@@ -382,11 +363,6 @@ const ToolbarRow = ({
         <Spade className="h-3 w-3" /> Hero
       </button>
       <div className="flex-1" />
-      {showNextStreet && (
-        <button onClick={handleNextStreet} className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-semibold min-h-[36px] flex items-center gap-1 active:scale-95">
-          {nextStreetLabel} <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      )}
       <button onClick={onEndHand} className="px-2.5 py-1.5 rounded-md bg-secondary text-secondary-foreground text-xs font-medium min-h-[36px] flex items-center gap-1 active:scale-95">
         <Square className="h-3 w-3" /> Fin
       </button>
@@ -400,15 +376,19 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
   const [betAmount, setBetAmount] = useState('');
   const [allInConfirm, setAllInConfirm] = useState<{ amount: number } | null>(null);
   const [overrideActorId, setOverrideActorId] = useState<string | null>(null);
+  const [raisePanelOpen, setRaisePanelOpen] = useState(false);
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
+  const advanceStreetFn = useGameStore((s) => s.advanceStreet);
   const error = useGameStore((s) => s.error);
   const clearError = useGameStore((s) => s.clearError);
   const { hint, label } = useRecoHint();
+  const fastState = useFastAction(overrideActorId);
 
   // Reset override when expected_actor changes
   useEffect(() => {
     setOverrideActorId(null);
+    setRaisePanelOpen(false);
   }, [gameState?.expected_actor_id]);
 
   useEffect(() => {
@@ -418,34 +398,48 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
     }
   }, [error, clearError]);
 
+  // ─── Fast dispatch for villain ───
+  const dispatchFast = useCallback((type: 'fold' | 'check' | 'call') => {
+    const actorId = overrideActorId ?? gameState?.expected_actor_id;
+    if (!actorId) return;
+    dispatchAction(type, undefined, actorId);
+    if (navigator.vibrate) navigator.vibrate(16);
+    setOverrideActorId(null);
+    setBetAmount('');
+    setRaisePanelOpen(false);
+  }, [overrideActorId, gameState?.expected_actor_id, dispatchAction]);
+
   if (!gameState) return null;
 
   const activeActorId = overrideActorId ?? gameState.expected_actor_id;
   const actor = activeActorId ? getPlayerById(gameState, activeActorId) : null;
   const isHeroActing = actor?.is_hero ?? false;
   const allInAmount = actor ? actor.invested_this_street_bb + actor.stack_remaining_bb : 0;
+  const isClosed = gameState.street_state.is_closed;
 
+  // ─── Hero bet/raise confirm ───
   const handlePresetAmount = (bb: number) => {
     setBetAmount(String(bb));
   };
 
   const isAllIn = (amount: number) => Math.abs(amount - allInAmount) < 0.01;
 
-  const doDispatchBet = (amount: number) => {
+  const doDispatchBet = (amount: number, actorId?: string) => {
+    const pid = actorId ?? activeActorId ?? undefined;
     const toCall = actor ? Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb) : 0;
     if (toCall === 0) {
-      dispatchAction('bet', amount, activeActorId ?? undefined);
+      dispatchAction('bet', amount, pid);
     } else {
-      dispatchAction('raise_to', amount, activeActorId ?? undefined);
+      dispatchAction('raise_to', amount, pid);
     }
     setBetAmount('');
+    setRaisePanelOpen(false);
   };
 
   const handleConfirmBet = () => {
     const amount = parseFloat(betAmount);
     if (isNaN(amount) || amount <= 0) return;
 
-    // Only confirm all-in for hero
     if (isAllIn(amount) && isHeroActing) {
       setAllInConfirm({ amount });
       return;
@@ -461,9 +455,25 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
     setAllInConfirm(null);
   };
 
-  // Actor info for villain mode
-  const actorLabel = actor ? `${actor.label} (${actor.position_label})` : '';
-  const actorStack = actor ? actor.stack_remaining_bb : 0;
+  // ─── Villain raise confirm ───
+  const handleVillainRaise = (amount: number) => {
+    const pid = activeActorId ?? undefined;
+    const toCall = actor ? Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb) : 0;
+    if (toCall === 0) {
+      dispatchAction('bet', amount, pid);
+    } else {
+      dispatchAction('raise_to', amount, pid);
+    }
+    if (navigator.vibrate) navigator.vibrate(16);
+    setRaisePanelOpen(false);
+    setBetAmount('');
+  };
+
+  // ─── Street advance ───
+  const handleAdvanceStreet = () => {
+    advanceStreetFn();
+    onOpenCardPicker('board');
+  };
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-1.5">
@@ -485,34 +495,53 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
       {/* Actor ribbon */}
       <ActorRibbon overrideActorId={overrideActorId} setOverrideActorId={setOverrideActorId} />
 
-      {/* Villain info bar */}
-      {!isHeroActing && actor && !gameState.street_state.is_closed && (
-        <div className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px]">
-          {actorLabel} — Stack {actorStack} BB
-        </div>
+      {/* ═══ MODE: Street Closed ═══ */}
+      {isClosed && (
+        <StreetClosePanel onAdvance={handleAdvanceStreet} />
       )}
 
-      {/* Reco strip (hero only) */}
-      {isHeroActing && <RecoStrip label={label} />}
+      {/* ═══ MODE: Villain (fast) ═══ */}
+      {!isClosed && fastState.canAct && !isHeroActing && (
+        <>
+          {/* Villain info bar */}
+          <div className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px]">
+            {fastState.actorLabel} — Stack {fastState.actorStack} BB
+          </div>
 
-      {/* Main 3-button row */}
-      <MainActionRow recoHint={hint} onOpenKeypad={onOpenKeypad} actorId={activeActorId} isHeroActing={isHeroActing} />
+          {raisePanelOpen && activeActorId ? (
+            <VillainRaisePanel
+              actorId={activeActorId}
+              onConfirm={handleVillainRaise}
+              onBack={() => setRaisePanelOpen(false)}
+            />
+          ) : (
+            <FastActionRow
+              state={fastState}
+              onFold={() => dispatchFast('fold')}
+              onPassive={() => dispatchFast(fastState.passiveType)}
+              onRaise={() => setRaisePanelOpen(true)}
+            />
+          )}
+        </>
+      )}
 
-      {/* Sizing presets (hero or anyone who bets) */}
-      {isHeroActing && <SizingPresets onSelectAmount={handlePresetAmount} actorId={activeActorId} />}
+      {/* ═══ MODE: Hero (complete) ═══ */}
+      {!isClosed && fastState.canAct && isHeroActing && (
+        <>
+          <RecoStrip label={label} />
+          <HeroActionRow recoHint={hint} onOpenKeypad={onOpenKeypad} actorId={activeActorId} />
+          <SizingPresets onSelectAmount={handlePresetAmount} actorId={activeActorId} />
+          <BetSlider betAmount={betAmount} setBetAmount={setBetAmount} />
+          <BetInputRow
+            betAmount={betAmount}
+            setBetAmount={setBetAmount}
+            onConfirm={handleConfirmBet}
+            onOpenKeypad={onOpenKeypad}
+          />
+        </>
+      )}
 
-      {/* Bet sizing slider (hero only) */}
-      {isHeroActing && <BetSlider betAmount={betAmount} setBetAmount={setBetAmount} />}
-
-      {/* Bet input + confirm */}
-      <BetInputRow
-        betAmount={betAmount}
-        setBetAmount={setBetAmount}
-        onConfirm={handleConfirmBet}
-        onOpenKeypad={onOpenKeypad}
-      />
-
-      {/* Toolbar */}
+      {/* Toolbar (always visible) */}
       <ToolbarRow onOpenCardPicker={onOpenCardPicker} onEndHand={onEndHand} />
 
       {/* All-in confirmation (hero only) */}
