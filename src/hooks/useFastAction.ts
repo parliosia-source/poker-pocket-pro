@@ -46,6 +46,7 @@ export function useFastAction(overrideActorId: string | null): FastActionState {
     const toCall = Math.max(0,
       gameState.street_state.current_bet_bb - actor.invested_this_street_bb
     );
+    const isUnopened = gameState.street_state.current_bet_bb === 0;
     const isCallAllIn = toCall >= actor.stack_remaining_bb;
     const showFold = toCall > 0;
     const showRaise = !(toCall > 0 && isCallAllIn);
@@ -63,10 +64,10 @@ export function useFastAction(overrideActorId: string | null): FastActionState {
       passiveType = 'call';
     }
 
-    const raiseLabel = toCall === 0
+    const raiseLabel = isUnopened
       ? (isHeroTurn ? 'Miser' : 'Miser ▸')
-      : (isHeroTurn ? 'Relancer' : 'Raise ▸');
-    const raiseType = toCall === 0 ? 'bet' : 'raise_to';
+      : (isHeroTurn ? 'Relancer' : 'Relancer ▸');
+    const raiseType = isUnopened ? 'bet' : 'raise_to';
 
     // Next actor preview
     const queue = gameState.action_queue.players_to_act;

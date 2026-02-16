@@ -31,8 +31,8 @@ const NumericKeypadSheet = ({ open, onOpenChange, actorId }: NumericKeypadSheetP
     const amount = parseFloat(value);
     if (!isNaN(amount) && amount > 0 && gameState) {
       const pid = actorId ?? gameState.expected_actor_id ?? undefined;
-      const toCall = gameState.derived.to_call_bb;
-      if (toCall === 0) {
+      const isUnopened = gameState.street_state.current_bet_bb === 0;
+      if (isUnopened) {
         dispatchAction('bet', amount, pid);
       } else {
         dispatchAction('raise_to', amount, pid);
@@ -49,7 +49,7 @@ const NumericKeypadSheet = ({ open, onOpenChange, actorId }: NumericKeypadSheetP
 
   // Pre-fill hint
   const placeholder = gameState
-    ? gameState.derived.to_call_bb === 0
+    ? gameState.street_state.current_bet_bb === 0
       ? gameState.config.bb_bb
       : gameState.derived.min_raise_to_bb ?? gameState.config.bb_bb
     : 0;
@@ -59,7 +59,7 @@ const NumericKeypadSheet = ({ open, onOpenChange, actorId }: NumericKeypadSheetP
       <DrawerContent>
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-sm">
-            {gameState?.derived.to_call_bb === 0 ? 'Bet' : 'Raise to'} (BB) — min {placeholder}
+            {gameState?.street_state.current_bet_bb === 0 ? 'Bet' : 'Raise to'} (BB) — min {placeholder}
           </DrawerTitle>
         </DrawerHeader>
         <div className="px-4 pb-6 space-y-3">

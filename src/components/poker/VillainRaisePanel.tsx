@@ -24,7 +24,8 @@ const VillainRaisePanel = ({ actorId, onConfirm, onBack }: VillainRaisePanelProp
   const isPreflop = gameState.current_street === 'preflop';
   const bb = gameState.config.bb_bb;
 
-  const minAmount = toCall === 0 ? bb : (min_raise_to_bb ?? current_bet_bb + bb);
+  const isUnopened = current_bet_bb === 0;
+  const minAmount = isUnopened ? bb : (min_raise_to_bb ?? current_bet_bb + bb);
   const maxAmount = actor.invested_this_street_bb + actor.stack_remaining_bb;
 
   const base = isPreflop ? bb : (toCall > 0 ? toCall : bb);

@@ -25,7 +25,8 @@ const BetSlider = ({ betAmount, setBetAmount }: BetSliderProps) => {
     const { min_raise_to_bb } = gameState.derived;
     const bb = gameState.config.bb_bb;
 
-    const min = toCall === 0
+    const isUnopened = current_bet_bb === 0;
+    const min = isUnopened
       ? bb
       : (min_raise_to_bb ?? current_bet_bb + bb);
 
