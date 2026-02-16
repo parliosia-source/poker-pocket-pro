@@ -98,3 +98,14 @@ export interface ValidationResult {
   valid: boolean;
   errors: string[];
 }
+
+// ═══════════════════════════════════════════════
+// TIMELINE EVENTS (for unified undo/redo)
+// ═══════════════════════════════════════════════
+
+export type TimelineEvent =
+  | { kind: 'action'; action: Action }
+  | { kind: 'advance_street'; street: Street; boardCards?: string[] }
+  | { kind: 'set_board_card'; card: string }
+  | { kind: 'set_board'; street: Street; cards: string[] }
+  | { kind: 'set_hero_cards'; cards: [string, string] };

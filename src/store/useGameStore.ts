@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { GameState, GameConfig, ActionType, Action, Street } from '@/engine/types';
+import type { GameState, GameConfig, ActionType, Action, Street, TimelineEvent } from '@/engine/types';
 import { createInitialState, validateAction, applyAction, advanceStreet, recalcDerived } from '@/engine/engine';
-import { undoAction } from '@/engine/undo';
+import { replayTimeline } from '@/engine/timeline';
 import { computeQuickSizing, compute2_2xSizing } from '@/engine/sizing';
 import { getPlayer } from '@/engine/utils';
 import type { HandSnapshot } from '@/engine/history';
@@ -20,7 +20,8 @@ interface SizingOptions {
 interface GameStore {
   // State
   gameState: GameState | null;
-  redoStack: Action[];
+  timeline: TimelineEvent[];
+  redoStack: TimelineEvent[];
   error: string | null;
   handHistory: HandSnapshot[];
 
@@ -47,6 +48,7 @@ export const useGameStore = create<GameStore>()(
   persist(
     (set, get) => ({
       gameState: null,
+      timeline: [],
       redoStack: [],
       error: null,
       handHistory: [],
@@ -55,12 +57,18 @@ export const useGameStore = create<GameStore>()(
         const currentState = get().gameState;
         const handNumber = currentState ? currentState.hand_number + 1 : 1;
         const state = createInitialState(config, handNumber);
-        set({ gameState: state, redoStack: [], error: null });
+        set({ gameState: state, timeline: [], redoStack: [], error: null });
       },
 
       dispatchAction: (type: ActionType, amount_bb?: number) => {
-        const { gameState } = get();
+        const { gameState, timeline } = get();
         if (!gameState) return;
+
+        // P1 guard: no actions when street is closed
+        if (gameState.street_state.is_closed) {
+          set({ error: 'Street fermée — avancez à la street suivante' });
+          return;
+        }
 
         const actor = gameState.expected_actor;
         const isAllIn = type === "all_in";
@@ -89,11 +97,12 @@ export const useGameStore = create<GameStore>()(
         };
 
         const newState = applyAction(gameState, action);
-        set({ gameState: newState, redoStack: [], error: null });
+        const event: TimelineEvent = { kind: 'action', action };
+        set({ gameState: newState, timeline: [...timeline, event], redoStack: [], error: null });
       },
 
       advanceStreet: (boardCards?: string[]) => {
-        const { gameState } = get();
+        const { gameState, timeline } = get();
         if (!gameState) return;
 
         const streetOrder: Street[] = ["preflop", "flop", "turn", "river"];
@@ -102,14 +111,14 @@ export const useGameStore = create<GameStore>()(
 
         const nextStreet = streetOrder[currentIndex + 1];
         const newState = advanceStreet(gameState, nextStreet, boardCards);
-        set({ gameState: newState, error: null });
+        const event: TimelineEvent = { kind: 'advance_street', street: nextStreet, boardCards };
+        set({ gameState: newState, timeline: [...timeline, event], error: null });
       },
 
       endHand: (result_bb?: number) => {
         const { gameState, handHistory } = get();
         if (!gameState) return;
 
-        // Save snapshot if there's meaningful content
         const voluntary = gameState.actions.filter(a => a.type !== 'post_sb' && a.type !== 'post_bb');
         const hasMeaningful = voluntary.length > 0 || gameState.hero_cards !== null || gameState.board.flop.some(c => c !== null);
         let newHistory = handHistory;
@@ -119,41 +128,54 @@ export const useGameStore = create<GameStore>()(
         }
 
         const newState = createInitialState(gameState.config, gameState.hand_number + 1);
-        set({ gameState: newState, redoStack: [], error: null, handHistory: newHistory });
+        set({ gameState: newState, timeline: [], redoStack: [], error: null, handHistory: newHistory });
       },
 
       undo: () => {
-        const { gameState } = get();
-        if (!gameState) return;
+        const { gameState, timeline } = get();
+        if (!gameState || timeline.length === 0) return;
 
-        const { newState, undoneAction } = undoAction(gameState);
-        if (undoneAction) {
-          set((s) => ({
-            gameState: newState,
-            redoStack: [undoneAction, ...s.redoStack],
-            error: null,
-          }));
-        }
+        const lastEvent = timeline[timeline.length - 1];
+        const remaining = timeline.slice(0, -1);
+        const newState = replayTimeline(gameState.config, gameState.hand_number, remaining);
+
+        set({
+          gameState: newState,
+          timeline: remaining,
+          redoStack: [lastEvent, ...get().redoStack],
+          error: null,
+        });
       },
 
       redo: () => {
-        const { gameState, redoStack } = get();
+        const { gameState, timeline, redoStack } = get();
         if (!gameState || redoStack.length === 0) return;
 
-        const [actionToRedo, ...rest] = redoStack;
-        const newState = applyAction(gameState, actionToRedo);
-        set({ gameState: newState, redoStack: rest, error: null });
+        const [eventToRedo, ...rest] = redoStack;
+        const newTimeline = [...timeline, eventToRedo];
+        const newState = replayTimeline(gameState.config, gameState.hand_number, newTimeline);
+
+        set({ gameState: newState, timeline: newTimeline, redoStack: rest, error: null });
       },
 
       setHeroCards: (cards: [string, string]) => {
-        const { gameState } = get();
+        const { gameState, timeline } = get();
         if (!gameState) return;
-        set({ gameState: { ...gameState, hero_cards: cards } });
+        const event: TimelineEvent = { kind: 'set_hero_cards', cards };
+        const newTimeline = [...timeline, event];
+        set({
+          gameState: { ...gameState, hero_cards: cards },
+          timeline: newTimeline,
+          redoStack: [],
+        });
       },
 
       setBoard: (street: Street, cards: string[]) => {
-        const { gameState } = get();
+        const { gameState, timeline } = get();
         if (!gameState) return;
+
+        const event: TimelineEvent = { kind: 'set_board', street, cards };
+        const newTimeline = [...timeline, event];
 
         const newBoard = { ...gameState.board };
         if (street === "flop") {
@@ -166,12 +188,19 @@ export const useGameStore = create<GameStore>()(
           newBoard.river = cards[0];
         }
 
-        set({ gameState: { ...gameState, board: newBoard } });
+        set({
+          gameState: { ...gameState, board: newBoard },
+          timeline: newTimeline,
+          redoStack: [],
+        });
       },
 
       setBoardCard: (card: string) => {
-        const { gameState } = get();
+        const { gameState, timeline } = get();
         if (!gameState) return;
+
+        const event: TimelineEvent = { kind: 'set_board_card', card };
+        const newTimeline = [...timeline, event];
 
         const street = gameState.current_street;
         const newBoard = { ...gameState.board };
@@ -190,7 +219,11 @@ export const useGameStore = create<GameStore>()(
           newBoard.river = card;
         }
 
-        set({ gameState: { ...gameState, board: newBoard } });
+        set({
+          gameState: { ...gameState, board: newBoard },
+          timeline: newTimeline,
+          redoStack: [],
+        });
       },
 
       clearError: () => set({ error: null }),
@@ -227,6 +260,9 @@ export const useGameStore = create<GameStore>()(
         const { gameState } = get();
         if (!gameState || gameState.hand_status !== "in_progress") return [];
 
+        // P1 guard: no actions when street is closed
+        if (gameState.street_state.is_closed) return [];
+
         const actions: ActionType[] = [];
         const { to_call_bb } = gameState.derived;
         const actor = getPlayer(gameState, gameState.expected_actor);
@@ -255,21 +291,24 @@ export const useGameStore = create<GameStore>()(
     }),
     {
       name: 'poker-game-store',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         gameState: state.gameState,
+        timeline: state.timeline,
         redoStack: state.redoStack,
         handHistory: state.handHistory,
       }),
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<GameStore>) };
-        // Recalc derived after rehydration
         if (merged.gameState) {
           merged.gameState = {
             ...merged.gameState,
             derived: recalcDerived(merged.gameState),
           };
         }
+        // Ensure timeline/redoStack exist (migration from v1)
+        if (!merged.timeline) merged.timeline = [];
+        if (!merged.redoStack) merged.redoStack = [];
         return merged;
       },
     },
