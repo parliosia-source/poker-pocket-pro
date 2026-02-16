@@ -61,6 +61,7 @@ export default {
           green: "hsl(var(--poker-green))",
           red: "hsl(var(--poker-red))",
           gold: "hsl(var(--poker-gold))",
+          blue: "hsl(var(--poker-blue))",
         },
       },
       fontFamily: {
@@ -73,25 +74,22 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
+        },
+        "reco-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 hsl(var(--ring) / 0.6)" },
+          "50%": { boxShadow: "0 0 12px 4px hsl(var(--ring) / 0.35)" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "reco-pulse": "reco-pulse 1.8s ease-in-out infinite",
       },
     },
   },
