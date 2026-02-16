@@ -205,6 +205,7 @@ export interface MonteCarloInput {
   iterations: number;
   seed: number;
   opponentCount?: number;  // default 1 (heads-up)
+  maxMs?: number;          // time budget — stop early if exceeded
 }
 
 export interface MonteCarloResult {
@@ -226,8 +227,26 @@ export function runMonteCarlo(input: MonteCarloInput): MonteCarloResult {
   const numOpponents = Math.max(1, input.opponentCount ?? 1);
 
   let wins = 0, ties = 0, losses = 0;
+  const maxMs = input.maxMs;
+  const CHUNK = 25; // check time every CHUNK iterations
 
   for (let i = 0; i < input.iterations; i++) {
+    // Time budget check every CHUNK iterations
+    if (maxMs && i > 0 && i % CHUNK === 0) {
+      if (performance.now() - t0 > maxMs) {
+        // Return best estimate so far
+        const total = wins + ties + losses;
+        if (total > 0) {
+          return {
+            equity: (wins + ties * 0.5) / total,
+            iterations: total,
+            ms: performance.now() - t0,
+            wins, ties, losses,
+          };
+        }
+        break;
+      }
+    }
     const shuffled = shuffle(remaining, rng);
 
     // Deal board completion + N villain hands from shuffled deck

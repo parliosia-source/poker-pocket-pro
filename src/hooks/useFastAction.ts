@@ -46,6 +46,7 @@ export function useFastAction(overrideActorId: string | null): FastActionState {
     const toCall = Math.max(0,
       gameState.street_state.current_bet_bb - actor.invested_this_street_bb
     );
+    // P1 fix: use current_bet_bb to distinguish bet vs raise, NOT toCall
     const isUnopened = gameState.street_state.current_bet_bb === 0;
     const isCallAllIn = toCall >= actor.stack_remaining_bb;
     const showFold = toCall > 0;
