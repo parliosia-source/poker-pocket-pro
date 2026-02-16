@@ -3,18 +3,28 @@
  * Used by undo/redo to guarantee board + street consistency.
  */
 
-import type { GameState, TimelineEvent, Street } from './types';
+import type { GameState, TimelineEvent, Street, GameConfig } from './types';
 import { createInitialState, applyAction, advanceStreet } from './engine';
 
 /**
+ * Extract stable player IDs from the first state's players for deterministic replay.
+ */
+function extractPlayerIds(events: readonly TimelineEvent[]): string[] | undefined {
+  // We can't extract from events alone - caller must provide config context
+  return undefined;
+}
+
+/**
  * Replay a list of timeline events from a fresh initial state.
+ * playerIds: stable IDs to ensure replay determinism.
  */
 export function replayTimeline(
-  config: GameState['config'],
+  config: GameConfig,
   handNumber: number,
   events: readonly TimelineEvent[],
+  playerIds?: string[],
 ): GameState {
-  let state = createInitialState(config, handNumber);
+  let state = createInitialState(config, handNumber, playerIds);
 
   for (const event of events) {
     switch (event.kind) {

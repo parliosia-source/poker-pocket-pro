@@ -14,8 +14,11 @@ export function undoAction(state: GameState): { newState: GameState; undoneActio
   const remainingActions = state.actions.slice(0, lastVoluntaryIndex);
   const actionsToReplay = remainingActions.filter(a => a.type !== "post_sb" && a.type !== "post_bb");
 
-  // Fresh state
-  let current = createInitialState(state.config, state.hand_number);
+  // Extract stable player IDs for deterministic replay
+  const playerIds = state.players.map(p => p.id);
+
+  // Fresh state with same player IDs
+  let current = createInitialState(state.config, state.hand_number, playerIds);
   current.hero_cards = state.hero_cards;
   current.board = { flop: [null, null, null], turn: null, river: null };
 

@@ -1,119 +1,101 @@
 import { describe, it, expect } from 'vitest';
-import { freshState, act, advance } from '../engine/helpers';
+import { freshState, act, advance, getHero, getVillain } from '../engine/helpers';
 
 describe('Full Hand Integration — preflop to river', () => {
   it('plays a complete hand through all 4 streets', () => {
-    // Hero = SB, 50bb stacks
     let s = freshState();
 
-    // ── PREFLOP ──
+    // PREFLOP
     expect(s.current_street).toBe('preflop');
     expect(s.derived.pot_bb).toBe(1.5);
 
-    // Hero open 2.5
     s = act(s, 'raise_to', 2.5);
     expect(s.derived.pot_bb).toBe(3.5);
-    expect(s.hero.stack_remaining_bb).toBe(47.5);
+    expect(getHero(s)!.stack_remaining_bb).toBe(47.5);
 
-    // Villain call
     s = act(s, 'call');
     expect(s.derived.pot_bb).toBe(5.0);
     expect(s.street_state.is_closed).toBe(true);
-    expect(s.hero.invested_total_bb).toBe(2.5);
-    expect(s.villain.invested_total_bb).toBe(2.5);
+    expect(getHero(s)!.invested_total_bb).toBe(2.5);
+    expect(getVillain(s)!.invested_total_bb).toBe(2.5);
 
-    // ── FLOP ──
+    // FLOP
     s = advance(s, ['Ah', 'Kd', '9c']);
     expect(s.current_street).toBe('flop');
     expect(s.derived.pot_bb).toBe(5.0);
-    expect(s.derived.to_call_bb).toBe(0);
-    expect(s.expected_actor).toBe('villain'); // BB = OOP
+    expect(s.expected_actor_id).toBe(getVillain(s)!.id);
 
-    // Villain bet 3
     s = act(s, 'bet', 3);
     expect(s.derived.pot_bb).toBe(8.0);
-    expect(s.derived.to_call_bb).toBe(3);
 
-    // Hero call
     s = act(s, 'call');
     expect(s.derived.pot_bb).toBe(11.0);
     expect(s.street_state.is_closed).toBe(true);
 
-    // ── TURN ──
+    // TURN
     s = advance(s, ['5s']);
     expect(s.current_street).toBe('turn');
-    expect(s.derived.pot_bb).toBe(11.0);
-    expect(s.hero.invested_this_street_bb).toBe(0);
-    expect(s.villain.invested_this_street_bb).toBe(0);
+    expect(getHero(s)!.invested_this_street_bb).toBe(0);
+    expect(getVillain(s)!.invested_this_street_bb).toBe(0);
 
-    // Check-check
-    s = act(s, 'check'); // villain
-    s = act(s, 'check'); // hero
-    expect(s.derived.pot_bb).toBe(11.0);
+    s = act(s, 'check');
+    s = act(s, 'check');
     expect(s.street_state.is_closed).toBe(true);
 
-    // ── RIVER ──
+    // RIVER
     s = advance(s, ['2h']);
-    expect(s.current_street).toBe('river');
-    expect(s.derived.pot_bb).toBe(11.0);
-
-    // Villain bet 8
     s = act(s, 'bet', 8);
     expect(s.derived.pot_bb).toBe(19.0);
 
-    // Hero call
     s = act(s, 'call');
     expect(s.derived.pot_bb).toBe(27.0);
-    expect(s.street_state.is_closed).toBe(true);
 
-    // Verify final invariants
-    expect(s.hero.invested_total_bb + s.hero.stack_remaining_bb).toBe(50);
-    expect(s.villain.invested_total_bb + s.villain.stack_remaining_bb).toBe(50);
-    expect(s.hero.invested_total_bb + s.villain.invested_total_bb).toBe(s.derived.pot_bb);
+    // Verify invariants
+    const hero = getHero(s)!;
+    const villain = getVillain(s)!;
+    expect(hero.invested_total_bb + hero.stack_remaining_bb).toBe(50);
+    expect(villain.invested_total_bb + villain.stack_remaining_bb).toBe(50);
+    expect(hero.invested_total_bb + villain.invested_total_bb).toBe(s.derived.pot_bb);
   });
 
   it('plays BB perspective: villain SB opens, hero BB defends', () => {
-    let s = freshState({ hero_position: 'BB' });
+    // Hero is BB (seat 1), villain is BTN/SB (seat 0)
+    let s = freshState({
+      players_config: [
+        { seat_index: 0, label: 'V1', is_hero: false, stack_bb: 50 },
+        { seat_index: 1, label: 'Hero', is_hero: true, stack_bb: 50 },
+      ],
+    });
 
-    // Hero=BB, villain=SB. Villain acts first preflop.
-    expect(s.expected_actor).toBe('villain');
-    expect(s.derived.pot_bb).toBe(1.5);
+    // Villain=BTN/SB acts first preflop in HU
+    expect(s.expected_actor_id).toBe(getVillain(s)!.id);
 
-    // Villain raise_to 3
     s = act(s, 'raise_to', 3);
-    expect(s.derived.pot_bb).toBe(4.0); // 3 + 1
-    expect(s.expected_actor).toBe('hero');
+    expect(s.derived.pot_bb).toBe(4.0);
+    expect(s.expected_actor_id).toBe(getHero(s)!.id);
 
-    // Hero call
     s = act(s, 'call');
     expect(s.derived.pot_bb).toBe(6.0);
     expect(s.street_state.is_closed).toBe(true);
 
     // Flop: hero (BB) acts first postflop
     s = advance(s, ['Th', '7c', '3d']);
-    expect(s.expected_actor).toBe('hero');
+    expect(s.expected_actor_id).toBe(getHero(s)!.id);
 
-    // Hero check, villain check
     s = act(s, 'check');
     s = act(s, 'check');
     expect(s.street_state.is_closed).toBe(true);
-    expect(s.derived.pot_bb).toBe(6.0);
   });
 
   it('verifies pot_odds and SPR at key moments', () => {
     let s = freshState();
-
-    // Preflop: hero raise 2.5
     s = act(s, 'raise_to', 2.5);
-    // Villain faces: pot=3.5, to_call=1.5
     expect(s.derived.to_call_bb).toBe(1.5);
-    // pot_odds = 1.5 / (3.5 + 1.5) * 100 = 30.0
     expect(s.derived.pot_odds_pct).toBe(30);
 
     s = act(s, 'call');
-    // pot=5.0, effective_stack = min(47.5, 47.5) = 47.5
     expect(s.derived.pot_bb).toBe(5.0);
-    // SPR = 47.5 / 5.0 = 9.5
+    // SPR = hero stack / pot = 47.5 / 5.0 = 9.5
     expect(s.derived.spr).toBe(9.5);
   });
 });

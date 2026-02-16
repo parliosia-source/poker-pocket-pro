@@ -1,24 +1,68 @@
-import type { GameState, Actor, Street, PlayerState } from './types';
+import type { GameState, Player, PositionLabel, Street } from './types';
 
-export function getPlayer(state: GameState, actor: Actor): PlayerState {
-  return actor === "hero" ? state.hero : state.villain;
+// ═══════════════════════════════════════════════
+// POSITION MAPS
+// ═══════════════════════════════════════════════
+
+const POSITION_MAPS: Record<number, PositionLabel[]> = {
+  2: ["BTN", "BB"],
+  3: ["BTN", "SB", "BB"],
+  4: ["BTN", "SB", "BB", "CO"],
+  5: ["BTN", "SB", "BB", "UTG", "CO"],
+  6: ["BTN", "SB", "BB", "UTG", "HJ", "CO"],
+  7: ["BTN", "SB", "BB", "UTG", "MP", "HJ", "CO"],
+  8: ["BTN", "SB", "BB", "UTG", "UTG1", "MP", "HJ", "CO"],
+  9: ["BTN", "SB", "BB", "UTG", "UTG1", "MP", "MP1", "HJ", "CO"],
+};
+
+export function assignPositions(tableSize: number, btnSeat: number): PositionLabel[] {
+  const labels = POSITION_MAPS[tableSize];
+  if (!labels) throw new Error(`Unsupported table size: ${tableSize}`);
+  const result: PositionLabel[] = new Array(tableSize);
+  for (let i = 0; i < tableSize; i++) {
+    const seat = (btnSeat + i) % tableSize;
+    result[seat] = labels[i];
+  }
+  return result;
 }
 
-export function getPlayerMut(state: GameState, actor: Actor): PlayerState {
-  return actor === "hero" ? state.hero : state.villain;
+// ═══════════════════════════════════════════════
+// PLAYER LOOKUPS
+// ═══════════════════════════════════════════════
+
+export function getPlayerById(state: GameState, id: string): Player | undefined {
+  return state.players.find(p => p.id === id);
 }
 
-export function otherActor(actor: Actor): Actor {
-  return actor === "hero" ? "villain" : "hero";
+export function getPlayerByIdMut(state: GameState, id: string): Player {
+  const p = state.players.find(p => p.id === id);
+  if (!p) throw new Error(`Player not found: ${id}`);
+  return p;
 }
 
-export function getBBPlayer(state: GameState): Actor {
-  return state.config.hero_position === "BB" ? "hero" : "villain";
+export function getPlayerBySeat(state: GameState, seat: number): Player | undefined {
+  return state.players.find(p => p.seat_index === seat);
 }
 
-export function getSBPlayer(state: GameState): Actor {
-  return state.config.hero_position === "SB" ? "hero" : "villain";
+export function findByPosition(state: GameState, pos: PositionLabel): Player | undefined {
+  return state.players.find(p => p.position_label === pos);
 }
+
+export function findHero(state: GameState): Player | undefined {
+  return state.players.find(p => p.is_hero);
+}
+
+export function getActivePlayers(state: GameState): Player[] {
+  return state.players.filter(p => p.status === "active");
+}
+
+export function getPlayersInHand(state: GameState): Player[] {
+  return state.players.filter(p => p.status !== "folded");
+}
+
+// ═══════════════════════════════════════════════
+// STREET / BOARD HELPERS
+// ═══════════════════════════════════════════════
 
 export function getNextStreet(street: Street): Street | null {
   switch (street) {
@@ -51,4 +95,17 @@ export function reconstructBoard(originalState: GameState, upToStreet: Street): 
   if (upToStreet === "turn") return board;
   board.river = originalState.board.river;
   return board;
+}
+
+// ═══════════════════════════════════════════════
+// QUEUE HELPERS
+// ═══════════════════════════════════════════════
+
+export function nextActiveSeatAfter(state: GameState, afterSeat: number): number {
+  for (let i = 1; i <= state.config.table_size; i++) {
+    const seat = (afterSeat + i) % state.config.table_size;
+    const p = getPlayerBySeat(state, seat);
+    if (p && p.status === "active") return seat;
+  }
+  return -1;
 }
