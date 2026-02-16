@@ -6,9 +6,12 @@ import { Loader2 } from 'lucide-react';
 const AnalysisDashboard = () => {
   const gameState = useGameStore((s) => s.gameState);
   const d = gameState?.derived;
-  const { equity, loading } = useEquity();
+  const useEquityResult = useEquity();
+  const { equity, loading } = useEquityResult;
 
+  const opponentCount = useEquityResult.opponentCount ?? 1;
   const eqDisplay = loading ? '…' : equity != null ? `${Math.round(equity * 100)}` : '—';
+  const eqLabel = opponentCount > 1 ? `Equity (vs ${opponentCount})` : 'Equity';
   // Simple EV: (equity * pot) - ((1-equity) * to_call)  when applicable
   let evDisplay = '—';
   if (equity != null && d && d.to_call_bb > 0) {
@@ -21,7 +24,7 @@ const AnalysisDashboard = () => {
     { label: 'À payer', value: d ? `${d.to_call_bb}` : '—', unit: 'BB', color: 'text-poker-gold' },
     { label: 'Pot Odds', value: d?.pot_odds_pct != null ? `${d.pot_odds_pct}` : '—', unit: '%', color: 'text-foreground' },
     { label: 'SPR', value: d?.spr != null ? `${d.spr}` : '—', unit: '', color: 'text-foreground' },
-    { label: 'Equity', value: eqDisplay, unit: '%', color: 'text-poker-green', loading },
+    { label: eqLabel, value: eqDisplay, unit: '%', color: 'text-poker-green', loading },
     { label: 'EV', value: evDisplay, unit: 'BB', color: 'text-poker-green' },
   ];
 
