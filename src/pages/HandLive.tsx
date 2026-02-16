@@ -10,16 +10,18 @@ import ActionList from '@/components/poker/ActionList';
 import ActionBar from '@/components/poker/ActionBar';
 import CardPickerSheet from '@/components/poker/CardPickerSheet';
 import NumericKeypadSheet from '@/components/poker/NumericKeypadSheet';
+import ResultSheet from '@/components/poker/ResultSheet';
 import { useGameStore } from '@/store/useGameStore';
 
 const HandLive = () => {
   const [cardPickerOpen, setCardPickerOpen] = useState(false);
   const [keypadOpen, setKeypadOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
   const [cardPickerTarget, setCardPickerTarget] = useState<'hero' | 'board'>('hero');
   const gameState = useGameStore((s) => s.gameState);
+  const endHand = useGameStore((s) => s.endHand);
   const navigate = useNavigate();
 
-  // Redirect to setup if no game state
   useEffect(() => {
     if (!gameState) {
       navigate('/session/new');
@@ -29,6 +31,13 @@ const HandLive = () => {
   const openCardPicker = (target: 'hero' | 'board') => {
     setCardPickerTarget(target);
     setCardPickerOpen(true);
+  };
+
+  const handleEndHand = () => setResultOpen(true);
+
+  const handleResultConfirm = (result_bb: number) => {
+    endHand(result_bb);
+    setResultOpen(false);
   };
 
   if (!gameState) return null;
@@ -50,10 +59,15 @@ const HandLive = () => {
         <ActionList />
       </main>
 
-      <ActionBar onOpenKeypad={() => setKeypadOpen(true)} onOpenCardPicker={openCardPicker} />
+      <ActionBar
+        onOpenKeypad={() => setKeypadOpen(true)}
+        onOpenCardPicker={openCardPicker}
+        onEndHand={handleEndHand}
+      />
 
       <CardPickerSheet open={cardPickerOpen} onOpenChange={setCardPickerOpen} target={cardPickerTarget} />
       <NumericKeypadSheet open={keypadOpen} onOpenChange={setKeypadOpen} />
+      <ResultSheet open={resultOpen} onOpenChange={setResultOpen} onConfirm={handleResultConfirm} />
     </div>
   );
 };

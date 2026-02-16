@@ -6,6 +6,8 @@ import { createInitialState, validateAction, applyAction, advanceStreet, recalcD
 import { undoAction } from '@/engine/undo';
 import { computeQuickSizing, compute2_2xSizing } from '@/engine/sizing';
 import { getPlayer } from '@/engine/utils';
+import type { HandSnapshot } from '@/engine/history';
+import { snapshotFromState, addToHistory } from '@/engine/history';
 
 interface SizingOptions {
   halfPot: number;
@@ -20,6 +22,7 @@ interface GameStore {
   gameState: GameState | null;
   redoStack: Action[];
   error: string | null;
+  handHistory: HandSnapshot[];
 
   // Actions
   startHand: (config: GameConfig) => void;
@@ -32,6 +35,8 @@ interface GameStore {
   setBoard: (street: Street, cards: string[]) => void;
   setBoardCard: (card: string) => void;
   clearError: () => void;
+  clearHistory: () => void;
+  exportHistory: () => void;
 
   // Selectors
   getSizingOptions: () => SizingOptions | null;
@@ -44,6 +49,7 @@ export const useGameStore = create<GameStore>()(
       gameState: null,
       redoStack: [],
       error: null,
+      handHistory: [],
 
       startHand: (config: GameConfig) => {
         const currentState = get().gameState;
@@ -99,11 +105,21 @@ export const useGameStore = create<GameStore>()(
         set({ gameState: newState, error: null });
       },
 
-      endHand: (_result_bb?: number) => {
-        const { gameState } = get();
+      endHand: (result_bb?: number) => {
+        const { gameState, handHistory } = get();
         if (!gameState) return;
+
+        // Save snapshot if there's meaningful content
+        const voluntary = gameState.actions.filter(a => a.type !== 'post_sb' && a.type !== 'post_bb');
+        const hasMeaningful = voluntary.length > 0 || gameState.hero_cards !== null || gameState.board.flop.some(c => c !== null);
+        let newHistory = handHistory;
+        if (hasMeaningful) {
+          const snapshot = snapshotFromState(gameState, result_bb ?? 0);
+          newHistory = addToHistory(handHistory, snapshot);
+        }
+
         const newState = createInitialState(gameState.config, gameState.hand_number + 1);
-        set({ gameState: newState, redoStack: [], error: null });
+        set({ gameState: newState, redoStack: [], error: null, handHistory: newHistory });
       },
 
       undo: () => {
@@ -179,6 +195,19 @@ export const useGameStore = create<GameStore>()(
 
       clearError: () => set({ error: null }),
 
+      clearHistory: () => set({ handHistory: [] }),
+
+      exportHistory: () => {
+        const { handHistory } = get();
+        const blob = new Blob([JSON.stringify(handHistory, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `poker-history-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+
       getSizingOptions: () => {
         const { gameState } = get();
         if (!gameState || gameState.hand_status !== "in_progress") return null;
@@ -230,6 +259,7 @@ export const useGameStore = create<GameStore>()(
       partialize: (state) => ({
         gameState: state.gameState,
         redoStack: state.redoStack,
+        handHistory: state.handHistory,
       }),
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<GameStore>) };
