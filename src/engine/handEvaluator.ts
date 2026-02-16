@@ -204,6 +204,7 @@ export interface MonteCarloInput {
   boardCards: string[];    // 0-5 cards
   iterations: number;
   seed: number;
+  opponentCount?: number;  // default 1 (heads-up)
 }
 
 export interface MonteCarloResult {
@@ -222,21 +223,46 @@ export function runMonteCarlo(input: MonteCarloInput): MonteCarloResult {
   const remaining = removeCards(fullDeck(), [...hero, ...board]);
   const boardNeeded = 5 - board.length;
   const rng = xorshift32(input.seed);
+  const numOpponents = Math.max(1, input.opponentCount ?? 1);
 
   let wins = 0, ties = 0, losses = 0;
 
   for (let i = 0; i < input.iterations; i++) {
     const shuffled = shuffle(remaining, rng);
-    const villainHand = [shuffled[0], shuffled[1]];
-    const simBoard = [...board, ...shuffled.slice(2, 2 + boardNeeded)];
+
+    // Deal board completion + N villain hands from shuffled deck
+    const simBoard = [...board, ...shuffled.slice(0, boardNeeded)];
+    let offset = boardNeeded;
 
     const heroRank = evaluateBest5([...hero, ...simBoard]);
-    const villainRank = evaluateBest5([...villainHand, ...simBoard]);
-    const cmp = compareRanks(heroRank, villainRank);
 
-    if (cmp > 0) wins++;
-    else if (cmp === 0) ties++;
-    else losses++;
+    // Compare hero vs all opponents — hero must beat ALL to win
+    let heroBeatAll = true;
+    let heroTiedAll = true;
+
+    for (let v = 0; v < numOpponents; v++) {
+      const villainHand = [shuffled[offset], shuffled[offset + 1]];
+      offset += 2;
+      const villainRank = evaluateBest5([...villainHand, ...simBoard]);
+      const cmp = compareRanks(heroRank, villainRank);
+
+      if (cmp < 0) {
+        heroBeatAll = false;
+        heroTiedAll = false;
+        break;
+      }
+      if (cmp > 0) {
+        heroTiedAll = false;
+      }
+    }
+
+    if (!heroBeatAll) {
+      losses++;
+    } else if (heroTiedAll) {
+      ties++;
+    } else {
+      wins++;
+    }
   }
 
   const total = wins + ties + losses;

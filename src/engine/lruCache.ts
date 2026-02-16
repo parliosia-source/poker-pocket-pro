@@ -41,9 +41,9 @@ export class LRUCache<V> {
   }
 }
 
-/** Build canonical cache key from hero cards + board cards */
-export function makeEquityKey(heroCards: string[], boardCards: string[], iterations: number): string {
+/** Build canonical cache key from hero cards + board cards + opponent count */
+export function makeEquityKey(heroCards: string[], boardCards: string[], iterations: number, opponentCount = 1): string {
   const h = [...heroCards].sort().join(',');
   const b = [...boardCards].sort().join(',');
-  return `${h}|${b}|${iterations}`;
+  return `${h}|${b}|${iterations}|${opponentCount}`;
 }

@@ -14,7 +14,7 @@ const RECO_STYLES: Record<string, { icon: typeof TrendingUp; bg: string; text: s
 
 const RecommendationBanner = () => {
   const gameState = useGameStore((s) => s.gameState);
-  const { equity, loading } = useEquity();
+  const { equity, loading, opponentCount } = useEquity();
 
   if (!gameState) return null;
 
@@ -50,7 +50,10 @@ const RecommendationBanner = () => {
         <p className={cn('text-sm font-semibold', style.text)}>
           {confidenceDot} {reco.action}
         </p>
-        <p className="text-xs text-muted-foreground truncate">{reco.rationale}</p>
+        <p className="text-xs text-muted-foreground truncate">
+          {reco.rationale}
+          {opponentCount > 1 && equity != null && ` (vs ${opponentCount})`}
+        </p>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGameStore } from '@/store/useGameStore';
 import { LRUCache, makeEquityKey } from '@/engine/lruCache';
 import type { WorkerRequest, WorkerResponse } from '@/workers/equityWorker';
@@ -14,17 +14,33 @@ export interface EquityState {
   loading: boolean;
   ms: number | null;
   iterations: number | null;
+  opponentCount: number;
 }
 
 export function useEquity(): EquityState {
   const heroCards = useGameStore((s) => s.gameState?.hero_cards);
   const board = useGameStore((s) => s.gameState?.board);
+  const players = useGameStore((s) => s.gameState?.players);
+  const heroId = useGameStore((s) => {
+    const gs = s.gameState;
+    if (!gs) return null;
+    const hero = gs.players.find(p => p.is_hero);
+    return hero?.id ?? null;
+  });
+
+  // Compute opponent count: active non-hero players
+  const opponentCount = (() => {
+    if (!players) return 1;
+    const activeNonHero = players.filter(p => p.status === 'active' && !p.is_hero).length;
+    return Math.max(1, activeNonHero);
+  })();
 
   const [state, setState] = useState<EquityState>({
     equity: null,
     loading: false,
     ms: null,
     iterations: null,
+    opponentCount: 1,
   });
 
   const workerRef = useRef<Worker | null>(null);
@@ -39,21 +55,23 @@ export function useEquity(): EquityState {
 
     workerRef.current.onmessage = (e: MessageEvent<WorkerResponse>) => {
       const { requestId, result } = e.data;
-      // Ignore stale responses
       if (requestId !== String(requestIdRef.current)) return;
+
+      const gs = useGameStore.getState().gameState;
+      const oc = gs ? Math.max(1, gs.players.filter(p => p.status === 'active' && !p.is_hero).length) : 1;
 
       setState({
         equity: result.equity,
         loading: false,
         ms: result.ms,
         iterations: result.iterations,
+        opponentCount: oc,
       });
 
-      // Cache the result — reconstruct key
-      const gs = useGameStore.getState().gameState;
+      // Cache
       if (gs?.hero_cards) {
         const boardCards = getBoardCards(gs.board);
-        const key = makeEquityKey(gs.hero_cards, boardCards, DEFAULT_ITERATIONS);
+        const key = makeEquityKey(gs.hero_cards, boardCards, DEFAULT_ITERATIONS, oc);
         cache.set(key, result);
       }
     };
@@ -63,17 +81,16 @@ export function useEquity(): EquityState {
     };
   }, []);
 
-  // Trigger computation when cards change
+  // Trigger computation when cards or opponent count change
   useEffect(() => {
     if (!heroCards || heroCards.length !== 2) {
-      setState({ equity: null, loading: false, ms: null, iterations: null });
+      setState({ equity: null, loading: false, ms: null, iterations: null, opponentCount });
       return;
     }
 
     const boardCards = board ? getBoardCards(board) : [];
-    const key = makeEquityKey(heroCards, boardCards, DEFAULT_ITERATIONS);
+    const key = makeEquityKey(heroCards, boardCards, DEFAULT_ITERATIONS, opponentCount);
 
-    // Check cache
     const cached = cache.get(key);
     if (cached) {
       setState({
@@ -81,15 +98,15 @@ export function useEquity(): EquityState {
         loading: false,
         ms: cached.ms,
         iterations: cached.iterations,
+        opponentCount,
       });
       return;
     }
 
-    // Send to worker
     requestIdRef.current++;
     const reqId = String(requestIdRef.current);
 
-    setState(prev => ({ ...prev, loading: true }));
+    setState(prev => ({ ...prev, loading: true, opponentCount }));
 
     const req: WorkerRequest = {
       requestId: reqId,
@@ -97,10 +114,11 @@ export function useEquity(): EquityState {
       boardCards,
       iterations: DEFAULT_ITERATIONS,
       seed: DEFAULT_SEED,
+      opponentCount,
     };
 
     workerRef.current?.postMessage(req);
-  }, [heroCards?.[0], heroCards?.[1], board?.flop[0], board?.flop[1], board?.flop[2], board?.turn, board?.river]);
+  }, [heroCards?.[0], heroCards?.[1], board?.flop[0], board?.flop[1], board?.flop[2], board?.turn, board?.river, opponentCount]);
 
   return state;
 }

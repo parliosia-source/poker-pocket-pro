@@ -6,6 +6,7 @@ export interface WorkerRequest {
   boardCards: string[];
   iterations: number;
   seed: number;
+  opponentCount: number;
 }
 
 export interface WorkerResponse {
@@ -14,9 +15,9 @@ export interface WorkerResponse {
 }
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
-  const { requestId, heroCards, boardCards, iterations, seed } = e.data;
+  const { requestId, heroCards, boardCards, iterations, seed, opponentCount } = e.data;
 
-  const input: MonteCarloInput = { heroCards, boardCards, iterations, seed };
+  const input: MonteCarloInput = { heroCards, boardCards, iterations, seed, opponentCount };
   const result = runMonteCarlo(input);
 
   const response: WorkerResponse = { requestId, result };
