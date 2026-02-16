@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { Undo2, Redo2, Square, Spade, AlertTriangle } from 'lucide-react';
+import { Undo2, Redo2, Square, Spade, AlertTriangle, LayoutGrid, List } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { useEquity } from '@/hooks/useEquity';
 import { useFastAction } from '@/hooks/useFastAction';
@@ -13,6 +13,7 @@ import FastActionRow from './FastActionRow';
 import VillainRaisePanel from './VillainRaisePanel';
 import StreetClosePanel from './StreetClosePanel';
 import LastActionChip from './LastActionChip';
+import TableMap from './TableMap';
 
 interface ActionBarProps {
   onOpenKeypad: () => void;
@@ -370,6 +371,7 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
   const [allInConfirm, setAllInConfirm] = useState<{ amount: number } | null>(null);
   const [overrideActorId, setOverrideActorId] = useState<string | null>(null);
   const [raisePanelOpen, setRaisePanelOpen] = useState(false);
+  const [viewForce, setViewForce] = useState<'ribbon' | 'table' | null>(null);
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
   const advanceStreetFn = useGameStore((s) => s.advanceStreet);
@@ -491,8 +493,31 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
         </div>
       )}
 
-      {/* Actor ribbon */}
-      <ActorRibbon overrideActorId={overrideActorId} setOverrideActorId={setOverrideActorId} />
+      {/* Actor view: auto Table for villain, Ribbon for hero — with toggle */}
+      {(() => {
+        const autoMode = isHeroActing ? 'ribbon' : 'table';
+        const viewMode = viewForce ?? autoMode;
+        return (
+          <>
+            <div className="flex items-center justify-between">
+              {viewMode === 'table' ? (
+                <TableMap overrideActorId={overrideActorId} setOverrideActorId={setOverrideActorId} />
+              ) : (
+                <div className="flex-1 overflow-hidden">
+                  <ActorRibbon overrideActorId={overrideActorId} setOverrideActorId={setOverrideActorId} />
+                </div>
+              )}
+              <button
+                onClick={() => setViewForce(viewMode === 'table' ? 'ribbon' : 'table')}
+                className="ml-1.5 p-1.5 rounded-md bg-secondary text-secondary-foreground min-h-[36px] min-w-[36px] flex items-center justify-center shrink-0"
+                title={viewMode === 'table' ? 'Vue ruban' : 'Vue table'}
+              >
+                {viewMode === 'table' ? <List className="h-3.5 w-3.5" /> : <LayoutGrid className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          </>
+        );
+      })()}
 
       {/* ═══ MODE: Street Closed ═══ */}
       {isClosed && (
