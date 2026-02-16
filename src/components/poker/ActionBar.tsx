@@ -7,6 +7,7 @@ import type { ActionType } from '@/engine/types';
 interface ActionBarProps {
   onOpenKeypad: () => void;
   onOpenCardPicker: (target: 'hero' | 'board') => void;
+  onEndHand: () => void;
 }
 
 /* ─── Sub-components ─── */
@@ -168,12 +169,11 @@ const CustomBetInput = ({ onOpenKeypad }: { onOpenKeypad: () => void }) => {
 
 /* ─── Main ActionBar ─── */
 
-const ActionBar = ({ onOpenKeypad, onOpenCardPicker }: ActionBarProps) => {
+const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps) => {
   const gameState = useGameStore((s) => s.gameState);
   const undo = useGameStore((s) => s.undo);
   const redo = useGameStore((s) => s.redo);
   const advanceStreet = useGameStore((s) => s.advanceStreet);
-  const endHand = useGameStore((s) => s.endHand);
   const redoStack = useGameStore((s) => s.redoStack);
   const error = useGameStore((s) => s.error);
   const clearError = useGameStore((s) => s.clearError);
@@ -280,7 +280,7 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker }: ActionBarProps) => {
         )}
         {showEndHand && (
           <button
-            onClick={() => endHand()}
+            onClick={onEndHand}
             className="px-3 py-2 rounded-md bg-secondary text-secondary-foreground text-xs font-medium min-h-[44px] flex items-center gap-1 active:scale-95"
           >
             <Square className="h-3 w-3" /> Fin
