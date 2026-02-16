@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '@/store/useGameStore';
+import { findHero } from '@/engine/utils';
 
 const SessionResumeCard = () => {
   const navigate = useNavigate();
@@ -11,8 +12,9 @@ const SessionResumeCard = () => {
   if (!gameState) return null;
 
   const handNumber = gameState.hand_number;
-  const position = gameState.config.hero_position === 'SB' ? 'BTN' : 'BB';
-  const stack = gameState.hero.stack_remaining_bb;
+  const hero = findHero(gameState);
+  const position = hero?.position_label ?? '?';
+  const stack = hero?.stack_remaining_bb ?? 0;
 
   return (
     <Card className="border-primary/30 bg-primary/5">

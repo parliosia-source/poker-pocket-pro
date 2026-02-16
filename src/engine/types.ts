@@ -14,9 +14,13 @@ export type ActionType =
   | "raise_to"
   | "all_in";
 
-export type Actor = "hero" | "villain";
+export type PlayerStatus = "active" | "folded" | "all_in";
 
-export type HeroPosition = "SB" | "BB";
+export type PositionLabel =
+  | "BTN" | "SB" | "BB"
+  | "UTG" | "UTG1" | "UTG2"
+  | "MP" | "MP1" | "MP2"
+  | "HJ" | "CO";
 
 export type HandStatus =
   | "in_progress"
@@ -25,53 +29,96 @@ export type HandStatus =
   | "completed_allin_runout";
 
 // ═══════════════════════════════════════════════
-// CORE TYPES
+// PLAYER
+// ═══════════════════════════════════════════════
+
+export interface Player {
+  readonly id: string;
+  readonly seat_index: number;
+  readonly position_label: PositionLabel;
+  readonly label: string;
+  readonly is_hero: boolean;
+
+  stack_start_bb: number;
+  stack_remaining_bb: number;
+  invested_this_street_bb: number;
+  invested_total_bb: number;
+  status: PlayerStatus;
+  has_acted_at_current_bet: boolean;
+}
+
+// ═══════════════════════════════════════════════
+// ACTION
 // ═══════════════════════════════════════════════
 
 export interface Action {
   readonly id: string;
   readonly street: Street;
-  readonly actor: Actor;
+  readonly player_id: string;
   readonly type: ActionType;
   readonly amount_bb: number | null;
   readonly is_all_in: boolean;
   readonly timestamp: number;
 }
 
-export interface PlayerState {
-  readonly stack_start_bb: number;
-  stack_remaining_bb: number;
-  invested_this_street_bb: number;
-  invested_total_bb: number;
-  is_all_in: boolean;
-  has_folded: boolean;
-}
+// ═══════════════════════════════════════════════
+// STREET STATE & ACTION QUEUE
+// ═══════════════════════════════════════════════
 
 export interface StreetState {
   readonly street: Street;
   current_bet_bb: number;
   previous_bet_bb: number;
-  num_actions: number;
+  last_aggressor_id: string | null;
+  num_voluntary_actions: number;
   is_closed: boolean;
 }
+
+export interface ActionQueue {
+  players_to_act: string[];
+}
+
+// ═══════════════════════════════════════════════
+// DERIVED
+// ═══════════════════════════════════════════════
 
 export interface Derived {
   pot_bb: number;
   to_call_bb: number;
+  hero_to_call_bb: number;
   pot_odds_pct: number | null;
+  hero_pot_odds_pct: number | null;
   spr: number | null;
   effective_stack_bb: number;
   min_raise_to_bb: number | null;
   pot_for_sizing_bb: number;
+  num_players_in_hand: number;
+  num_players_active: number;
+  side_pot_warning: boolean;
+}
+
+// ═══════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════
+
+export interface PlayerConfig {
+  readonly seat_index: number;
+  readonly label: string;
+  readonly is_hero: boolean;
+  readonly stack_bb: number;
 }
 
 export interface GameConfig {
   readonly sb_bb: number;
   readonly bb_bb: number;
-  readonly hero_position: HeroPosition;
-  readonly hero_stack_bb: number;
-  readonly villain_stack_bb: number;
+  readonly table_size: number;
+  readonly btn_seat_index: number;
+  readonly players_config: PlayerConfig[];
 }
+
+// ═══════════════════════════════════════════════
+// BOARD & GAME STATE
+// ═══════════════════════════════════════════════
 
 export interface Board {
   flop: [string | null, string | null, string | null];
@@ -81,13 +128,13 @@ export interface Board {
 
 export interface GameState {
   readonly config: GameConfig;
-  hero: PlayerState;
-  villain: PlayerState;
+  players: Player[];
   current_street: Street;
   street_state: StreetState;
+  action_queue: ActionQueue;
+  expected_actor_id: string | null;
   actions: readonly Action[];
   derived: Derived;
-  expected_actor: Actor;
   hand_status: HandStatus;
   board: Board;
   hero_cards: [string, string] | null;

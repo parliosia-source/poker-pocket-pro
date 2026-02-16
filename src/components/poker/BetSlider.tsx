@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { useGameStore } from '@/store/useGameStore';
+import { getPlayerById } from '@/engine/utils';
 
 interface BetSliderProps {
   betAmount: string;
@@ -14,9 +15,12 @@ const BetSlider = ({ betAmount, setBetAmount }: BetSliderProps) => {
     if (!gameState || gameState.hand_status !== 'in_progress' || gameState.street_state.is_closed) {
       return null;
     }
+    if (!gameState.expected_actor_id) return null;
 
-    const actor = gameState[gameState.expected_actor];
-    const toCall = gameState.derived.to_call_bb;
+    const actor = getPlayerById(gameState, gameState.expected_actor_id);
+    if (!actor) return null;
+
+    const toCall = Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb);
     const { current_bet_bb } = gameState.street_state;
     const { min_raise_to_bb } = gameState.derived;
     const bb = gameState.config.bb_bb;
@@ -37,7 +41,6 @@ const BetSlider = ({ betAmount, setBetAmount }: BetSliderProps) => {
 
   const handleChange = (values: number[]) => {
     const val = values[0];
-    // Round to 0.5 BB
     const rounded = Math.round(val * 2) / 2;
     const final = Math.min(Math.max(rounded, range.min), range.max);
     setBetAmount(String(final));

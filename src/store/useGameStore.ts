@@ -5,7 +5,7 @@ import type { GameState, GameConfig, ActionType, Action, Street, TimelineEvent }
 import { createInitialState, validateAction, applyAction, advanceStreet, recalcDerived } from '@/engine/engine';
 import { replayTimeline } from '@/engine/timeline';
 import { computeQuickSizing, compute2_2xSizing } from '@/engine/sizing';
-import { getPlayer } from '@/engine/utils';
+import { getPlayerById, findHero } from '@/engine/utils';
 import type { HandSnapshot } from '@/engine/history';
 import { snapshotFromState, addToHistory } from '@/engine/history';
 
@@ -22,12 +22,13 @@ interface GameStore {
   gameState: GameState | null;
   timeline: TimelineEvent[];
   redoStack: TimelineEvent[];
+  playerIds: string[];
   error: string | null;
   handHistory: HandSnapshot[];
 
   // Actions
   startHand: (config: GameConfig) => void;
-  dispatchAction: (type: ActionType, amount_bb?: number) => void;
+  dispatchAction: (type: ActionType, amount_bb?: number, player_id?: string) => void;
   advanceStreet: (boardCards?: string[]) => void;
   endHand: (result_bb?: number) => void;
   undo: () => void;
@@ -50,6 +51,7 @@ export const useGameStore = create<GameStore>()(
       gameState: null,
       timeline: [],
       redoStack: [],
+      playerIds: [],
       error: null,
       handHistory: [],
 
@@ -57,24 +59,29 @@ export const useGameStore = create<GameStore>()(
         const currentState = get().gameState;
         const handNumber = currentState ? currentState.hand_number + 1 : 1;
         const state = createInitialState(config, handNumber);
-        set({ gameState: state, timeline: [], redoStack: [], error: null });
+        const pids = state.players.map(p => p.id);
+        set({ gameState: state, timeline: [], redoStack: [], playerIds: pids, error: null });
       },
 
-      dispatchAction: (type: ActionType, amount_bb?: number) => {
+      dispatchAction: (type: ActionType, amount_bb?: number, player_id?: string) => {
         const { gameState, timeline } = get();
         if (!gameState) return;
 
-        // P1 guard: no actions when street is closed
         if (gameState.street_state.is_closed) {
           set({ error: 'Street fermée — avancez à la street suivante' });
           return;
         }
 
-        const actor = gameState.expected_actor;
+        const pid = player_id ?? gameState.expected_actor_id;
+        if (!pid) {
+          set({ error: 'Aucun joueur actif' });
+          return;
+        }
+
         const isAllIn = type === "all_in";
 
         const actionPayload = {
-          actor,
+          player_id: pid,
           type,
           amount_bb: amount_bb ?? null,
           is_all_in: isAllIn,
@@ -89,7 +96,7 @@ export const useGameStore = create<GameStore>()(
         const action: Action = {
           id: nanoid(),
           street: gameState.current_street,
-          actor,
+          player_id: pid,
           type,
           amount_bb: amount_bb ?? null,
           is_all_in: isAllIn,
@@ -128,16 +135,17 @@ export const useGameStore = create<GameStore>()(
         }
 
         const newState = createInitialState(gameState.config, gameState.hand_number + 1);
-        set({ gameState: newState, timeline: [], redoStack: [], error: null, handHistory: newHistory });
+        const pids = newState.players.map(p => p.id);
+        set({ gameState: newState, timeline: [], redoStack: [], playerIds: pids, error: null, handHistory: newHistory });
       },
 
       undo: () => {
-        const { gameState, timeline } = get();
+        const { gameState, timeline, playerIds } = get();
         if (!gameState || timeline.length === 0) return;
 
         const lastEvent = timeline[timeline.length - 1];
         const remaining = timeline.slice(0, -1);
-        const newState = replayTimeline(gameState.config, gameState.hand_number, remaining);
+        const newState = replayTimeline(gameState.config, gameState.hand_number, remaining, playerIds);
 
         set({
           gameState: newState,
@@ -148,12 +156,12 @@ export const useGameStore = create<GameStore>()(
       },
 
       redo: () => {
-        const { gameState, timeline, redoStack } = get();
+        const { gameState, timeline, redoStack, playerIds } = get();
         if (!gameState || redoStack.length === 0) return;
 
         const [eventToRedo, ...rest] = redoStack;
         const newTimeline = [...timeline, eventToRedo];
-        const newState = replayTimeline(gameState.config, gameState.hand_number, newTimeline);
+        const newState = replayTimeline(gameState.config, gameState.hand_number, newTimeline, playerIds);
 
         set({ gameState: newState, timeline: newTimeline, redoStack: rest, error: null });
       },
@@ -244,8 +252,10 @@ export const useGameStore = create<GameStore>()(
       getSizingOptions: () => {
         const { gameState } = get();
         if (!gameState || gameState.hand_status !== "in_progress") return null;
+        if (!gameState.expected_actor_id) return null;
 
-        const actor = getPlayer(gameState, gameState.expected_actor);
+        const actor = getPlayerById(gameState, gameState.expected_actor_id);
+        if (!actor) return null;
 
         return {
           halfPot: computeQuickSizing(gameState, 0.5),
@@ -259,17 +269,16 @@ export const useGameStore = create<GameStore>()(
       getAvailableActions: () => {
         const { gameState } = get();
         if (!gameState || gameState.hand_status !== "in_progress") return [];
-
-        // P1 guard: no actions when street is closed
         if (gameState.street_state.is_closed) return [];
+        if (!gameState.expected_actor_id) return [];
+
+        const actor = getPlayerById(gameState, gameState.expected_actor_id);
+        if (!actor || actor.status !== "active") return [];
 
         const actions: ActionType[] = [];
-        const { to_call_bb } = gameState.derived;
-        const actor = getPlayer(gameState, gameState.expected_actor);
+        const to_call = Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb);
 
-        if (actor.is_all_in) return [];
-
-        if (to_call_bb === 0) {
+        if (to_call === 0) {
           actions.push("check");
           if (gameState.street_state.current_bet_bb === 0) {
             actions.push("bet");
@@ -291,13 +300,21 @@ export const useGameStore = create<GameStore>()(
     }),
     {
       name: 'poker-game-store',
-      version: 2,
+      version: 3,
       partialize: (state) => ({
         gameState: state.gameState,
         timeline: state.timeline,
         redoStack: state.redoStack,
+        playerIds: state.playerIds,
         handHistory: state.handHistory,
       }),
+      migrate: (persisted: any, version: number) => {
+        if (version < 3) {
+          // Old HU format → reset
+          return { ...persisted, gameState: null, timeline: [], redoStack: [], playerIds: [] };
+        }
+        return persisted;
+      },
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<GameStore>) };
         if (merged.gameState) {
@@ -306,9 +323,9 @@ export const useGameStore = create<GameStore>()(
             derived: recalcDerived(merged.gameState),
           };
         }
-        // Ensure timeline/redoStack exist (migration from v1)
         if (!merged.timeline) merged.timeline = [];
         if (!merged.redoStack) merged.redoStack = [];
+        if (!merged.playerIds) merged.playerIds = [];
         return merged;
       },
     },

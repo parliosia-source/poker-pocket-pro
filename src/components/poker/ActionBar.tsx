@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Undo2, Redo2, Square, ChevronRight, Spade } from 'lucide-react';
+import { Undo2, Redo2, Square, ChevronRight, Spade, AlertTriangle } from 'lucide-react';
 import { useGameStore } from '@/store/useGameStore';
 import { useEquity } from '@/hooks/useEquity';
 import { computeReco } from '@/engine/recoEngine';
+import { getPlayerById, findHero } from '@/engine/utils';
 import type { ActionType } from '@/engine/types';
 import BetSlider from './BetSlider';
 import AllInConfirmDialog from './AllInConfirmDialog';
@@ -14,7 +15,13 @@ interface ActionBarProps {
   onEndHand: () => void;
 }
 
-/* ─── Reco hook (derives highlight from existing engine) ─── */
+/* ─── Helper: get actor player from state ─── */
+function getExpectedActor(gameState: ReturnType<typeof useGameStore.getState>['gameState']) {
+  if (!gameState || !gameState.expected_actor_id) return null;
+  return getPlayerById(gameState, gameState.expected_actor_id) ?? null;
+}
+
+/* ─── Reco hook ─── */
 
 type RecoHint = 'fold' | 'call_check' | 'raise_bet' | null;
 
@@ -25,6 +32,12 @@ function useRecoHint(): { hint: RecoHint; label: string } {
   return useMemo(() => {
     if (!gameState || gameState.hand_status !== 'in_progress') {
       return { hint: null, label: 'Reco : indisponible' };
+    }
+
+    // Only show reco when hero is expected actor
+    const actor = getExpectedActor(gameState);
+    if (!actor?.is_hero) {
+      return { hint: null, label: '' };
     }
 
     const d = gameState.derived;
@@ -53,45 +66,98 @@ function useRecoHint(): { hint: RecoHint; label: string } {
       case 'RAISE':
         return { hint: 'raise_bet' as const, label: `${reco.action} — ${reco.rationale}` };
       default:
-        return { hint: null, label: 'Reco : indisponible (Phase equity)' };
+        return { hint: null, label: 'Reco : indisponible' };
     }
   }, [gameState, equity]);
 }
 
+/* ─── Actor Ribbon ─── */
+
+const ActorRibbon = ({ overrideActorId, setOverrideActorId }: {
+  overrideActorId: string | null;
+  setOverrideActorId: (id: string | null) => void;
+}) => {
+  const gameState = useGameStore((s) => s.gameState);
+  if (!gameState) return null;
+
+  const expectedId = gameState.expected_actor_id;
+
+  return (
+    <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
+      {gameState.players.map((p) => {
+        const isExpected = p.id === expectedId;
+        const isOverride = overrideActorId === p.id;
+        const isCurrent = isOverride || (!overrideActorId && isExpected);
+        const inQueue = gameState.action_queue.players_to_act.includes(p.id);
+        const canTap = p.status === 'active' && (inQueue || p.status === 'active');
+        const isFolded = p.status === 'folded';
+        const isAllIn = p.status === 'all_in';
+
+        return (
+          <button
+            key={p.id}
+            disabled={!canTap || isFolded || isAllIn}
+            onClick={() => {
+              if (isExpected) {
+                setOverrideActorId(null);
+              } else {
+                setOverrideActorId(p.id);
+              }
+            }}
+            className={cn(
+              'flex flex-col items-center justify-center rounded-md text-[10px] font-bold transition-all min-h-[44px] min-w-[44px] px-1.5 shrink-0',
+              isCurrent && 'bg-primary text-primary-foreground ring-2 ring-ring animate-pulse',
+              !isCurrent && isExpected && 'bg-primary/30 text-primary',
+              !isCurrent && !isExpected && canTap && 'bg-secondary text-secondary-foreground',
+              isFolded && 'opacity-30 line-through',
+              isAllIn && 'opacity-70 bg-poker-red/20 text-poker-red',
+              p.is_hero && !isCurrent && 'border border-primary/50',
+            )}
+          >
+            <span>{p.position_label}</span>
+            {p.is_hero && <span className="text-[8px]">★</span>}
+            {isAllIn && <span className="text-[8px]">AI</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 /* ─── Reco Strip ─── */
 
-const RecoStrip = ({ label }: { label: string }) => (
-  <div className="px-3 py-1.5 rounded-md bg-card border border-border text-[10px] text-muted-foreground truncate">
-    💡 {label}
-  </div>
-);
+const RecoStrip = ({ label }: { label: string }) => {
+  if (!label) return null;
+  return (
+    <div className="px-3 py-1.5 rounded-md bg-card border border-border text-[10px] text-muted-foreground truncate">
+      💡 {label}
+    </div>
+  );
+};
 
 /* ─── Sizing Presets Row ─── */
 
-const SizingPresets = ({ onSelectAmount }: { onSelectAmount: (bb: number) => void }) => {
+const SizingPresets = ({ onSelectAmount, actorId }: { onSelectAmount: (bb: number) => void; actorId: string | null }) => {
   const gameState = useGameStore((s) => s.gameState);
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
-  // P1: hide sizing when street is closed
   if (gameState.street_state.is_closed) return null;
+  if (!actorId) return null;
 
-  const actor = gameState[gameState.expected_actor];
+  const actor = getPlayerById(gameState, actorId);
+  if (!actor) return null;
+
   const { current_bet_bb } = gameState.street_state;
   const { min_raise_to_bb } = gameState.derived;
-  const toCall = gameState.derived.to_call_bb;
+  const toCall = Math.max(0, current_bet_bb - actor.invested_this_street_bb);
   const isPreflop = gameState.current_street === 'preflop';
   const bb = gameState.config.bb_bb;
 
-  // Min = min legal bet/raise
   const minAmount = toCall === 0
-    ? bb // min bet = 1 BB
+    ? bb
     : (min_raise_to_bb ?? current_bet_bb + bb);
 
-  // Max = all-in (total invested + remaining)
   const maxAmount = actor.invested_this_street_bb + actor.stack_remaining_bb;
 
-  // Multiplier presets
-  // Preflop: 2.5x/3x/3.5x = raise_to = x * BB
-  // Postflop: x * to_call (or x * BB if to_call=0)
   const base = isPreflop ? bb : (toCall > 0 ? toCall : bb);
   const presets = [
     { label: 'Min', amount: minAmount },
@@ -131,7 +197,6 @@ const BetInputRow = ({
 }) => {
   const gameState = useGameStore((s) => s.gameState);
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
-  // P1: hide bet input when street is closed
   if (gameState.street_state.is_closed) return null;
 
   const toCall = gameState.derived.to_call_bb;
@@ -164,22 +229,26 @@ const BetInputRow = ({
 const MainActionRow = ({
   recoHint,
   onOpenKeypad,
+  actorId,
+  isHeroActing,
 }: {
   recoHint: RecoHint;
   onOpenKeypad: () => void;
+  actorId: string | null;
+  isHeroActing: boolean;
 }) => {
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
 
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
-
-  // P1: hide action buttons when street is closed
   if (gameState.street_state.is_closed) return null;
+  if (!actorId) return null;
 
-  const toCall = gameState.derived.to_call_bb;
-  const actor = gameState[gameState.expected_actor];
+  const actor = getPlayerById(gameState, actorId);
+  if (!actor || actor.status !== 'active') return null;
 
-  // Reduce motion check
+  const toCall = Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb);
+
   const prefersReduced = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -193,23 +262,21 @@ const MainActionRow = ({
     textColor: string;
   }[] = [];
 
-  // 1. Fold button (only if there's something to call)
   if (toCall > 0) {
     buttons.push({
       id: 'fold',
       label: 'Abandonner',
-      action: () => dispatchAction('fold'),
+      action: () => dispatchAction('fold', undefined, actorId),
       bg: 'bg-poker-red/20',
       textColor: 'text-poker-red',
     });
   }
 
-  // 2. Check / Call
   if (toCall === 0) {
     buttons.push({
       id: 'call_check',
       label: 'Passer',
-      action: () => dispatchAction('check'),
+      action: () => dispatchAction('check', undefined, actorId),
       bg: 'bg-poker-green/20',
       textColor: 'text-poker-green',
     });
@@ -218,13 +285,12 @@ const MainActionRow = ({
     buttons.push({
       id: 'call_check',
       label: isCallAllIn ? 'Suivre All-in' : `Suivre ${toCall}`,
-      action: () => dispatchAction('call'),
+      action: () => dispatchAction('call', undefined, actorId),
       bg: 'bg-poker-green/20',
       textColor: 'text-poker-green',
     });
   }
 
-  // 3. Bet / Raise
   if (toCall === 0) {
     buttons.push({
       id: 'raise_bet',
@@ -253,7 +319,7 @@ const MainActionRow = ({
             'flex-1 py-3 rounded-lg text-sm font-bold transition-colors min-h-[52px] active:scale-95',
             b.bg,
             b.textColor,
-            recoHint === b.id && pulseClass,
+            isHeroActing && recoHint === b.id && pulseClass,
           )}
         >
           {b.label}
@@ -263,7 +329,7 @@ const MainActionRow = ({
   );
 };
 
-/* ─── Toolbar Row (undo/redo/board/hero/next street/end) ─── */
+/* ─── Toolbar Row ─── */
 
 const ToolbarRow = ({
   onOpenCardPicker,
@@ -333,11 +399,17 @@ const ToolbarRow = ({
 const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps) => {
   const [betAmount, setBetAmount] = useState('');
   const [allInConfirm, setAllInConfirm] = useState<{ amount: number } | null>(null);
+  const [overrideActorId, setOverrideActorId] = useState<string | null>(null);
   const gameState = useGameStore((s) => s.gameState);
   const dispatchAction = useGameStore((s) => s.dispatchAction);
   const error = useGameStore((s) => s.error);
   const clearError = useGameStore((s) => s.clearError);
   const { hint, label } = useRecoHint();
+
+  // Reset override when expected_actor changes
+  useEffect(() => {
+    setOverrideActorId(null);
+  }, [gameState?.expected_actor_id]);
 
   useEffect(() => {
     if (error) {
@@ -348,8 +420,10 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
 
   if (!gameState) return null;
 
-  const actor = gameState[gameState.expected_actor];
-  const allInAmount = actor.invested_this_street_bb + actor.stack_remaining_bb;
+  const activeActorId = overrideActorId ?? gameState.expected_actor_id;
+  const actor = activeActorId ? getPlayerById(gameState, activeActorId) : null;
+  const isHeroActing = actor?.is_hero ?? false;
+  const allInAmount = actor ? actor.invested_this_street_bb + actor.stack_remaining_bb : 0;
 
   const handlePresetAmount = (bb: number) => {
     setBetAmount(String(bb));
@@ -358,11 +432,11 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
   const isAllIn = (amount: number) => Math.abs(amount - allInAmount) < 0.01;
 
   const doDispatchBet = (amount: number) => {
-    const toCall = gameState.derived.to_call_bb;
+    const toCall = actor ? Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb) : 0;
     if (toCall === 0) {
-      dispatchAction('bet', amount);
+      dispatchAction('bet', amount, activeActorId ?? undefined);
     } else {
-      dispatchAction('raise_to', amount);
+      dispatchAction('raise_to', amount, activeActorId ?? undefined);
     }
     setBetAmount('');
   };
@@ -371,7 +445,8 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
     const amount = parseFloat(betAmount);
     if (isNaN(amount) || amount <= 0) return;
 
-    if (isAllIn(amount)) {
+    // Only confirm all-in for hero
+    if (isAllIn(amount) && isHeroActing) {
       setAllInConfirm({ amount });
       return;
     }
@@ -386,6 +461,10 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
     setAllInConfirm(null);
   };
 
+  // Actor info for villain mode
+  const actorLabel = actor ? `${actor.label} (${actor.position_label})` : '';
+  const actorStack = actor ? actor.stack_remaining_bb : 0;
+
   return (
     <div className="fixed bottom-0 left-0 right-0 z-30 bg-background/95 backdrop-blur border-t border-border px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-1.5">
       {/* Error toast */}
@@ -395,17 +474,35 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
         </div>
       )}
 
-      {/* Reco strip */}
-      <RecoStrip label={label} />
+      {/* Side pot warning */}
+      {gameState.derived.side_pot_warning && (
+        <div className="px-3 py-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-yellow-500 text-[10px] flex items-center gap-1.5">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          Side pot détecté — pot affiché = pot total
+        </div>
+      )}
+
+      {/* Actor ribbon */}
+      <ActorRibbon overrideActorId={overrideActorId} setOverrideActorId={setOverrideActorId} />
+
+      {/* Villain info bar */}
+      {!isHeroActing && actor && !gameState.street_state.is_closed && (
+        <div className="px-3 py-1 rounded-md bg-secondary text-secondary-foreground text-[10px]">
+          {actorLabel} — Stack {actorStack} BB
+        </div>
+      )}
+
+      {/* Reco strip (hero only) */}
+      {isHeroActing && <RecoStrip label={label} />}
 
       {/* Main 3-button row */}
-      <MainActionRow recoHint={hint} onOpenKeypad={onOpenKeypad} />
+      <MainActionRow recoHint={hint} onOpenKeypad={onOpenKeypad} actorId={activeActorId} isHeroActing={isHeroActing} />
 
-      {/* Sizing presets */}
-      <SizingPresets onSelectAmount={handlePresetAmount} />
+      {/* Sizing presets (hero or anyone who bets) */}
+      {isHeroActing && <SizingPresets onSelectAmount={handlePresetAmount} actorId={activeActorId} />}
 
-      {/* Bet sizing slider */}
-      <BetSlider betAmount={betAmount} setBetAmount={setBetAmount} />
+      {/* Bet sizing slider (hero only) */}
+      {isHeroActing && <BetSlider betAmount={betAmount} setBetAmount={setBetAmount} />}
 
       {/* Bet input + confirm */}
       <BetInputRow
@@ -415,10 +512,10 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
         onOpenKeypad={onOpenKeypad}
       />
 
-      {/* Toolbar: undo/redo/board/hero/next/end */}
+      {/* Toolbar */}
       <ToolbarRow onOpenCardPicker={onOpenCardPicker} onEndHand={onEndHand} />
 
-      {/* All-in confirmation */}
+      {/* All-in confirmation (hero only) */}
       <AllInConfirmDialog
         open={allInConfirm !== null}
         amount={allInConfirm?.amount ?? 0}

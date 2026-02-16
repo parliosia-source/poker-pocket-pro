@@ -1,4 +1,5 @@
 import type { GameState } from './types';
+import { findHero } from './utils';
 
 export interface HandSnapshot {
   id: number;
@@ -10,6 +11,7 @@ export interface HandSnapshot {
   actionsCount: number;
   result_bb: number;
   endedBy: 'fold' | 'showdown' | 'manual';
+  playersCount: number;
 }
 
 export function snapshotFromState(state: GameState, result_bb: number): HandSnapshot {
@@ -26,16 +28,19 @@ export function snapshotFromState(state: GameState, result_bb: number): HandSnap
   if (state.hand_status === 'completed_fold') endedBy = 'fold';
   else if (state.hand_status === 'completed_showdown' || state.hand_status === 'completed_allin_runout') endedBy = 'showdown';
 
+  const hero = findHero(state);
+
   return {
     id: state.hand_number,
     ts: Date.now(),
-    heroPosition: state.config.hero_position,
+    heroPosition: hero?.position_label ?? '?',
     heroCards: state.hero_cards,
     board,
     pot_bb: state.derived.pot_bb,
     actionsCount: voluntaryActions.length,
     result_bb,
     endedBy,
+    playersCount: state.config.table_size,
   };
 }
 
