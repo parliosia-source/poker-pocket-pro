@@ -157,7 +157,8 @@ const SizingPresets = ({ onSelectAmount, actorId }: { onSelectAmount: (bb: numbe
   const isPreflop = gameState.current_street === 'preflop';
   const bb = gameState.config.bb_bb;
 
-  const minAmount = toCall === 0 ? bb : (min_raise_to_bb ?? current_bet_bb + bb);
+  const isUnopened = current_bet_bb === 0;
+  const minAmount = isUnopened ? bb : (min_raise_to_bb ?? current_bet_bb + bb);
   const maxAmount = actor.invested_this_street_bb + actor.stack_remaining_bb;
 
   const base = isPreflop ? bb : (toCall > 0 ? toCall : bb);
@@ -201,8 +202,8 @@ const BetInputRow = ({
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
   if (gameState.street_state.is_closed) return null;
 
-  const toCall = gameState.derived.to_call_bb;
-  const placeholder = toCall === 0
+  const isUnopened = gameState.street_state.current_bet_bb === 0;
+  const placeholder = isUnopened
     ? `${gameState.config.bb_bb} BB`
     : `${gameState.derived.min_raise_to_bb ?? gameState.config.bb_bb} BB`;
 
@@ -271,6 +272,8 @@ const HeroActionRow = ({
     });
   }
 
+  const isUnopened = gameState.street_state.current_bet_bb === 0;
+
   if (toCall === 0) {
     buttons.push({
       id: 'call_check',
@@ -290,23 +293,13 @@ const HeroActionRow = ({
     });
   }
 
-  if (toCall === 0) {
-    buttons.push({
-      id: 'raise_bet',
-      label: 'Miser',
-      action: onOpenKeypad,
-      bg: 'bg-poker-blue/20',
-      textColor: 'text-poker-blue',
-    });
-  } else {
-    buttons.push({
-      id: 'raise_bet',
-      label: 'Relancer',
-      action: onOpenKeypad,
-      bg: 'bg-poker-blue/20',
-      textColor: 'text-poker-blue',
-    });
-  }
+  buttons.push({
+    id: 'raise_bet',
+    label: isUnopened ? 'Miser' : 'Relancer',
+    action: onOpenKeypad,
+    bg: 'bg-poker-blue/20',
+    textColor: 'text-poker-blue',
+  });
 
   return (
     <div className="flex gap-2">
@@ -426,8 +419,8 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
 
   const doDispatchBet = (amount: number, actorId?: string) => {
     const pid = actorId ?? activeActorId ?? undefined;
-    const toCall = actor ? Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb) : 0;
-    if (toCall === 0) {
+    const isUnopened = gameState.street_state.current_bet_bb === 0;
+    if (isUnopened) {
       dispatchAction('bet', amount, pid);
     } else {
       dispatchAction('raise_to', amount, pid);
@@ -458,11 +451,17 @@ const ActionBar = ({ onOpenKeypad, onOpenCardPicker, onEndHand }: ActionBarProps
   // ─── Villain raise confirm ───
   const handleVillainRaise = (amount: number) => {
     const pid = activeActorId ?? undefined;
-    const toCall = actor ? Math.max(0, gameState.street_state.current_bet_bb - actor.invested_this_street_bb) : 0;
-    if (toCall === 0) {
+    const isUnopened = gameState.street_state.current_bet_bb === 0;
+    const timelineBefore = useGameStore.getState().timeline.length;
+    if (isUnopened) {
       dispatchAction('bet', amount, pid);
     } else {
       dispatchAction('raise_to', amount, pid);
+    }
+    const timelineAfter = useGameStore.getState().timeline.length;
+    if (timelineAfter === timelineBefore) {
+      // Action was rejected — keep panel open
+      return;
     }
     if (navigator.vibrate) navigator.vibrate(16);
     setRaisePanelOpen(false);
