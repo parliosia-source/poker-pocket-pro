@@ -7,10 +7,10 @@ const AnalysisDashboard = () => {
   const gameState = useGameStore((s) => s.gameState);
   const d = gameState?.derived;
   const useEquityResult = useEquity();
-  const { equity, loading } = useEquityResult;
+  const { equity, loading, approx } = useEquityResult;
 
   const opponentCount = useEquityResult.opponentCount ?? 1;
-  const eqDisplay = loading ? '…' : equity != null ? `${Math.round(equity * 100)}` : '—';
+  const eqDisplay = loading ? '…' : equity != null ? `${approx ? '≈ ' : ''}${Math.round(equity * 100)}` : '—';
   const eqLabel = opponentCount > 1 ? `Equity (vs ${opponentCount})` : 'Equity';
   // Simple EV: (equity * pot) - ((1-equity) * to_call)  when applicable
   let evDisplay = '—';

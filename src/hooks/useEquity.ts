@@ -9,7 +9,13 @@ function getIterations(opponentCount: number): number {
   if (opponentCount <= 1) return 3000;
   if (opponentCount <= 2) return 1500;
   if (opponentCount <= 4) return 800;
-  return 500; // 5+ opponents — 6 hands × 500 = 63k eval calls
+  if (opponentCount <= 6) return 200;
+  return 150; // 7+ opponents — keep under 350ms
+}
+/** Time budget in ms sent to worker */
+function getMaxMs(opponentCount: number): number {
+  if (opponentCount <= 2) return 1000;
+  return 350;
 }
 const DEFAULT_SEED = 42;
 
@@ -21,6 +27,7 @@ export interface EquityState {
   ms: number | null;
   iterations: number | null;
   opponentCount: number;
+  approx: boolean;         // true if time-budget was hit before full iterations
 }
 
 export function useEquity(): EquityState {
@@ -47,6 +54,7 @@ export function useEquity(): EquityState {
     ms: null,
     iterations: null,
     opponentCount: 1,
+    approx: false,
   });
 
   const workerRef = useRef<Worker | null>(null);
@@ -66,12 +74,14 @@ export function useEquity(): EquityState {
       const gs = useGameStore.getState().gameState;
       const oc = gs ? Math.max(1, gs.players.filter(p => p.status === 'active' && !p.is_hero).length) : 1;
 
+      const iters = getIterations(oc);
       setState({
         equity: result.equity,
         loading: false,
         ms: result.ms,
         iterations: result.iterations,
         opponentCount: oc,
+        approx: result.iterations < iters,
       });
 
       // Cache
@@ -91,7 +101,7 @@ export function useEquity(): EquityState {
   // Trigger computation when cards or opponent count change
   useEffect(() => {
     if (!heroCards || heroCards.length !== 2) {
-      setState({ equity: null, loading: false, ms: null, iterations: null, opponentCount });
+      setState({ equity: null, loading: false, ms: null, iterations: null, opponentCount, approx: false });
       return;
     }
 
@@ -107,6 +117,7 @@ export function useEquity(): EquityState {
         ms: cached.ms,
         iterations: cached.iterations,
         opponentCount,
+        approx: cached.iterations < iters,
       });
       return;
     }
@@ -114,7 +125,7 @@ export function useEquity(): EquityState {
     requestIdRef.current++;
     const reqId = String(requestIdRef.current);
 
-    setState(prev => ({ ...prev, loading: true, opponentCount }));
+    setState(prev => ({ ...prev, loading: true, opponentCount, approx: false }));
 
     const req: WorkerRequest = {
       requestId: reqId,
@@ -123,6 +134,7 @@ export function useEquity(): EquityState {
       iterations: iters,
       seed: DEFAULT_SEED,
       opponentCount,
+      maxMs: getMaxMs(opponentCount),
     };
 
     workerRef.current?.postMessage(req);
