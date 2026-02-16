@@ -69,6 +69,8 @@ const RecoStrip = ({ label }: { label: string }) => (
 const SizingPresets = ({ onSelectAmount }: { onSelectAmount: (bb: number) => void }) => {
   const gameState = useGameStore((s) => s.gameState);
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
+  // P1: hide sizing when street is closed
+  if (gameState.street_state.is_closed) return null;
 
   const actor = gameState[gameState.expected_actor];
   const { current_bet_bb } = gameState.street_state;
@@ -127,6 +129,8 @@ const BetInputRow = ({
 }) => {
   const gameState = useGameStore((s) => s.gameState);
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
+  // P1: hide bet input when street is closed
+  if (gameState.street_state.is_closed) return null;
 
   const toCall = gameState.derived.to_call_bb;
   const placeholder = toCall === 0
@@ -166,6 +170,9 @@ const MainActionRow = ({
   const dispatchAction = useGameStore((s) => s.dispatchAction);
 
   if (!gameState || gameState.hand_status !== 'in_progress') return null;
+
+  // P1: hide action buttons when street is closed
+  if (gameState.street_state.is_closed) return null;
 
   const toCall = gameState.derived.to_call_bb;
   const actor = gameState[gameState.expected_actor];
@@ -266,12 +273,13 @@ const ToolbarRow = ({
   const gameState = useGameStore((s) => s.gameState);
   const undo = useGameStore((s) => s.undo);
   const redo = useGameStore((s) => s.redo);
-  const advanceStreet = useGameStore((s) => s.advanceStreet);
+  const advanceStreetFn = useGameStore((s) => s.advanceStreet);
+  const timeline = useGameStore((s) => s.timeline);
   const redoStack = useGameStore((s) => s.redoStack);
 
   if (!gameState) return null;
 
-  const canUndo = gameState.actions.filter(a => a.type !== 'post_sb' && a.type !== 'post_bb').length > 0;
+  const canUndo = timeline.length > 0;
   const canRedo = redoStack.length > 0;
 
   const showNextStreet =
@@ -287,7 +295,7 @@ const ToolbarRow = ({
   const nextStreetLabel = streetOrder[gameState.current_street] ?? 'Next';
 
   const handleNextStreet = () => {
-    advanceStreet();
+    advanceStreetFn();
     onOpenCardPicker('board');
   };
 
